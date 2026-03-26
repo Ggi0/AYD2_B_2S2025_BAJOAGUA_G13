@@ -84,11 +84,9 @@ export type CrearContratoPayload = {
   rutas: RutaAutorizada[];
 };
 
-// src/services/api.ts - Agregar estos tipos
-
 export type Tarifario = {
   id: number;
-  tipo_unidad: string;  // LIGERA, PESADA, CABEZAL
+  tipo_unidad: string;
   limite_peso_ton: number;
   costo_base_km: number;
   activo: boolean;
@@ -144,6 +142,11 @@ class ApiService {
     this.baseUrl = API_BASE_URL;
   }
 
+  // Método público para obtener la base URL
+  public getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
   private async request<T>(endpoint: string, options: RequestInit): Promise<ApiResponse<T>> {
     const token = this.getToken();
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
@@ -178,28 +181,21 @@ class ApiService {
     });
   }
 
-  // src/services/api.ts - En la clase ApiService, modificar getMe
-
-// src/services/api.ts - Modificar getMe
-
-async getMe(token: string): Promise<ApiResponse<MeResponse>> {
-  console.log('[apiService] getMe called with token:', token?.substring(0, 30) + '...');
-  const response = await this.request<MeResponse>("/auth/me", {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-  console.log('[apiService] getMe response:', response);
-  console.log('[apiService] getMe response.data.sub:', response.data?.sub);
-  return response;
-}
+  async getMe(token: string): Promise<ApiResponse<MeResponse>> {
+    console.log('[apiService] getMe called with token:', token?.substring(0, 30) + '...');
+    const response = await this.request<MeResponse>("/auth/me", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    console.log('[apiService] getMe response:', response);
+    console.log('[apiService] getMe response.data.sub:', response.data?.sub);
+    return response;
+  }
 
   // ============ MÉTODOS DE CONTRATOS ============
   
-  /**
-   * Crear un nuevo contrato
-   */
   async crearContrato(payload: CrearContratoPayload): Promise<ApiResponse<Contrato>> {
     return this.request<Contrato>("/contratos", {
       method: "POST",
@@ -207,27 +203,18 @@ async getMe(token: string): Promise<ApiResponse<MeResponse>> {
     });
   }
 
-  /**
-   * Obtener un contrato por ID
-   */
   async obtenerContrato(id: number): Promise<ApiResponse<Contrato>> {
     return this.request<Contrato>(`/contratos/${id}`, {
       method: "GET",
     });
   }
 
-  /**
-   * Listar contratos de un cliente
-   */
   async listarContratosPorCliente(clienteId: number): Promise<ApiResponse<Contrato[]>> {
     return this.request<Contrato[]>(`/contratos/cliente/${clienteId}`, {
       method: "GET",
     });
   }
 
-  /**
-   * Modificar un contrato
-   */
   async modificarContrato(id: number, payload: Partial<CrearContratoPayload>): Promise<ApiResponse<Contrato>> {
     return this.request<Contrato>(`/contratos/${id}`, {
       method: "PUT",
@@ -235,29 +222,21 @@ async getMe(token: string): Promise<ApiResponse<MeResponse>> {
     });
   }
 
-  /**
-   * Validar si un cliente puede realizar una ruta
-   */
-  // src/services/api.ts - Ya tienes este método, verifica que esté correcto
+  async validarCliente(
+    clienteId: number,
+    params: { origen: string; destino: string; tipo_unidad: string }
+  ): Promise<ApiResponse<ValidacionCliente>> {
+    const queryParams = new URLSearchParams({
+      origen: params.origen,
+      destino: params.destino,
+      tipo_unidad: params.tipo_unidad,
+    }).toString();
+    
+    return this.request<ValidacionCliente>(`/contratos/validar/${clienteId}?${queryParams}`, {
+      method: "GET",
+    });
+  }
 
-async validarCliente(
-  clienteId: number,
-  params: { origen: string; destino: string; tipo_unidad: string }
-): Promise<ApiResponse<ValidacionCliente>> {
-  const queryParams = new URLSearchParams({
-    origen: params.origen,
-    destino: params.destino,
-    tipo_unidad: params.tipo_unidad,
-  }).toString();
-  
-  return this.request<ValidacionCliente>(`/contratos/validar/${clienteId}?${queryParams}`, {
-    method: "GET",
-  });
-}
-
-  /**
-   * Agregar descuento a un contrato
-   */
   async agregarDescuento(
     contratoId: number,
     payload: DescuentoContrato
@@ -268,47 +247,31 @@ async validarCliente(
     });
   }
 
-
-  // src/services/api.ts - En la clase ApiService, agregar:
-
-async obtenerTarifarios(): Promise<ApiResponse<Tarifario[]>> {
-  return this.request<Tarifario[]>("/tarifario", {
-    method: "GET",
-  });
-}
-
-async obtenerRangosReferencia(): Promise<ApiResponse<RangosReferencia>> {
-  return this.request<RangosReferencia>("/tarifario/referencia", {
-    method: "GET",
-  });
-}
-
-
-// src/services/api.ts
-// Agregar este método en la clase ApiService
-
-/**
- * Listar todos los contratos (para vista de logística)
- */
-async listarTodosContratos(params?: { limit?: number; estado?: string }): Promise<ApiResponse<Contrato[]>> {
-  let url = "/contratos";
-  if (params) {
-    const queryParams = new URLSearchParams();
-    if (params.limit) queryParams.append('limit', params.limit.toString());
-    if (params.estado) queryParams.append('estado', params.estado);
-    if (queryParams.toString()) url += `?${queryParams.toString()}`;
+  async obtenerTarifarios(): Promise<ApiResponse<Tarifario[]>> {
+    return this.request<Tarifario[]>("/tarifario", {
+      method: "GET",
+    });
   }
-  return this.request<Contrato[]>(url, {
-    method: "GET",
-  });
-}
 
+  async obtenerRangosReferencia(): Promise<ApiResponse<RangosReferencia>> {
+    return this.request<RangosReferencia>("/tarifario/referencia", {
+      method: "GET",
+    });
+  }
 
+  async listarTodosContratos(params?: { limit?: number; estado?: string }): Promise<ApiResponse<Contrato[]>> {
+    let url = "/contratos";
+    if (params) {
+      const queryParams = new URLSearchParams();
+      if (params.limit) queryParams.append('limit', params.limit.toString());
+      if (params.estado) queryParams.append('estado', params.estado);
+      if (queryParams.toString()) url += `?${queryParams.toString()}`;
+    }
+    return this.request<Contrato[]>(url, {
+      method: "GET",
+    });
+  }
 
-
-  /**
-   * Agregar ruta autorizada a un contrato
-   */
   async agregarRuta(
     contratoId: number,
     payload: RutaAutorizada

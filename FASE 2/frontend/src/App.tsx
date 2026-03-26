@@ -18,6 +18,16 @@ import PagosPage from './pages/finanzas/PagosPage';
 import DashboardGerencial from './pages/finanzas/DashboardGerencial';
 import { AuthProvider } from './context/AuthContext';
 
+// Imports de Piloto
+import PrincipalPiloto from './pages/piloto/PrincipalPiloto';
+import IniciarViaje from './pages/piloto/IniciarViaje';
+import FinalizarEntrega from './pages/piloto/FinalizarEntrega';
+import ReportarEvento from './pages/piloto/ReportarEvento';
+import OrdenDetalle from './pages/piloto/OrdenDetalle';
+import MisOrdenes from './pages/piloto/MisOrdenes';
+import EnTransito from './pages/piloto/EnTransito';
+import Historial from './pages/piloto/Historial';
+
 function App() {
   return (
     <AuthProvider>
@@ -202,6 +212,72 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={['finanzas', 'gerencia', 'admin']}>
                 <DashboardGerencial />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* ── Piloto ── */}
+          <Route
+            path="/piloto/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={['piloto']}>
+                <PrincipalPiloto />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/piloto/ordenes"
+            element={
+              <ProtectedRoute allowedRoles={['piloto']}>
+                <MisOrdenes />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/piloto/en-transito"
+            element={
+              <ProtectedRoute allowedRoles={['piloto']}>
+                <EnTransito />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/piloto/historial"
+            element={
+              <ProtectedRoute allowedRoles={['piloto']}>
+                <Historial />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/piloto/orden/:id"
+            element={
+              <ProtectedRoute allowedRoles={['piloto']}>
+                <OrdenDetalle />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/piloto/orden/:id/iniciar-viaje"
+            element={
+              <ProtectedRoute allowedRoles={['piloto']}>
+                <IniciarViaje />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/piloto/orden/:id/finalizar"
+            element={
+              <ProtectedRoute allowedRoles={['piloto']}>
+                <FinalizarEntrega />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/piloto/orden/:id/evento"
+            element={
+              <ProtectedRoute allowedRoles={['piloto']}>
+                <ReportarEvento />
               </ProtectedRoute>
             }
           />
