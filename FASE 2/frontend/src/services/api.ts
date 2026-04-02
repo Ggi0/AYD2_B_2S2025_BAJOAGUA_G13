@@ -272,6 +272,12 @@ class ApiService {
     });
   }
 
+  async obtenerProxNumeroContrato(): Promise<ApiResponse<{ numero_contrato: string }>> {
+    return this.request<{ numero_contrato: string }>("/contratos/obtener-numero-proximo", {
+      method: "GET",
+    });
+  }
+
   async agregarRuta(
     contratoId: number,
     payload: RutaAutorizada

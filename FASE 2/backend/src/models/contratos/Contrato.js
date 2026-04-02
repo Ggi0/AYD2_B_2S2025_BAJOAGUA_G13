@@ -319,6 +319,25 @@ const cambiarEstado = async (id, estado) => {
   return result.recordset[0];
 };
 
+/**
+ * Obtiene el contrato más reciente (para generar el siguiente número)
+ * @async
+ * @function obtenerUltimoContrato
+ * @returns {Promise<Object|undefined>} Último contrato creado con numero_contrato
+ * @example
+ * const ultimoContrato = await obtenerUltimoContrato();
+ */
+const obtenerUltimoContrato = async () => {
+  const pool = await getConnection();
+  const result = await pool.request()
+    .query(`
+      SELECT TOP 1 id, numero_contrato, fecha_creacion
+      FROM contratos
+      ORDER BY id DESC
+    `);
+  return result.recordset[0];
+};
+
 module.exports = {
   crearContrato,
   buscarPorId,
@@ -327,5 +346,6 @@ module.exports = {
   actualizarContrato,
   actualizarSaldo,
   cambiarEstado,
-  listarTodos  // NUEVO
+  listarTodos,
+  obtenerUltimoContrato
 };

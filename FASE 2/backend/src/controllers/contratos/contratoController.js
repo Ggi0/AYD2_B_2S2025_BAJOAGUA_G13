@@ -7,7 +7,8 @@ const crearContrato = async (req, res) => {
     const usuario_ejecutor = req.user ? Number(req.user.sub) : null;
     const ip              = req.ip;
 
-    const camposObligatorios = ['numero_contrato', 'cliente_id', 'fecha_inicio', 'fecha_fin', 'limite_credito', 'plazo_pago'];
+    // numero_contrato es opcional porque se genera automáticamente
+    const camposObligatorios = ['cliente_id', 'fecha_inicio', 'fecha_fin', 'limite_credito', 'plazo_pago'];
     for (const campo of camposObligatorios) {
       if (!datos[campo]) return res.status(400).json({ ok: false, mensaje: `El campo ${campo} es obligatorio` });
     }
@@ -16,6 +17,15 @@ const crearContrato = async (req, res) => {
     res.status(201).json({ ok: true, mensaje: 'Contrato creado correctamente', data: contrato });
   } catch (error) {
     res.status(error.status || 500).json({ ok: false, mensaje: error.mensaje || 'Error al crear contrato' });
+  }
+};
+
+const obtenerProxNumeroContrato = async (req, res) => {
+  try {
+    const resultado = await contratoService.obtenerProxNumeroContrato();
+    res.status(200).json({ ok: true, data: resultado });
+  } catch (error) {
+    res.status(error.status || 500).json({ ok: false, mensaje: error.mensaje || 'Error al obtener número de contrato' });
   }
 };
 
@@ -105,8 +115,15 @@ const agregarDescuento = async (req, res) => {
     const usuario_ejecutor = req.user ? Number(req.user.sub) : null;
     const ip              = req.ip;
 
-    if (!datos.tipo_unidad || !datos.porcentaje_descuento) {
+    // Validaciones básicas
+    if (!datos.tipo_unidad || datos.porcentaje_descuento === undefined || datos.porcentaje_descuento === null) {
       return res.status(400).json({ ok: false, mensaje: 'Los campos tipo_unidad y porcentaje_descuento son obligatorios' });
+    }
+
+    // Validar que porcentaje_descuento sea un número
+    const porcentaje = Number(datos.porcentaje_descuento);
+    if (isNaN(porcentaje)) {
+      return res.status(400).json({ ok: false, mensaje: 'El porcentaje_descuento debe ser un número válido' });
     }
 
     const descuento = await contratoService.agregarDescuento(Number(id), datos, usuario_ejecutor, ip);
@@ -139,6 +156,7 @@ const agregarRuta = async (req, res) => {
 module.exports = {
   crearContrato,
   obtenerContrato,
+  obtenerProxNumeroContrato,
   listarContratosPorCliente,
   listarTodosContratos,  
   modificarContrato,
