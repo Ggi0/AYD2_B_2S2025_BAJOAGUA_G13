@@ -22,11 +22,34 @@ const Auditoria      = require('../../models/auditoria/Auditoria');
 
 /**
  * @async
+ * @function generarNumeroContrato
+ * @description Genera automáticamente un número único de contrato con formato CTR-YYYY-NNNNN
+ * @returns {Promise<string>} Número de contrato generado (ej: CTR-2026-00001)
+ * @throws {Error} Si hay error al buscar el último contrato
+ */
+const generarNumeroContrato = async () => {
+  const year = new Date().getFullYear();
+  const ultimoContrato = await Contrato.obtenerUltimoContrato();
+  
+  let secuencial = 1;
+  if (ultimoContrato && ultimoContrato.numero_contrato) {
+    const parte = ultimoContrato.numero_contrato.split('-');
+    if (parte[1] === String(year)) {
+      secuencial = parseInt(parte[2]) + 1;
+    }
+  }
+  
+  return `CTR-${year}-${String(secuencial).padStart(5, '0')}`;
+};
+
+/**
+ * @async
  * @function crearContrato
  * @description Crea un nuevo contrato de transporte para un cliente corporativo
  * Valida cliente activo, plazo de pago, fechas, y crea tarifas/rutas si se proporcionan
+ * El número de contrato se genera automáticamente si no se proporciona
  * @param {Object} datos - Datos del contrato
- * @param {string} datos.numero_contrato - Número identificador único del contrato
+ * @param {string} [datos.numero_contrato] - Número identificador único (se genera automáticamente si no se proporciona)
  * @param {number} datos.cliente_id - ID del cliente corporativo
  * @param {string} datos.fecha_inicio - Fecha de inicio (YYYY-MM-DD)
  * @param {string} datos.fecha_fin - Fecha de finalización (debe ser > fecha_inicio)
@@ -40,7 +63,12 @@ const Auditoria      = require('../../models/auditoria/Auditoria');
  * @throws {Error} Si cliente no existe, no es corporativo, inactivo o datos inválidos
  */
 const crearContrato = async (datos, usuario_ejecutor, ip) => {
-  const { numero_contrato, cliente_id, fecha_inicio, fecha_fin, limite_credito, plazo_pago, tarifas, rutas } = datos;
+  let { numero_contrato, cliente_id, fecha_inicio, fecha_fin, limite_credito, plazo_pago, tarifas, rutas } = datos;
+
+  // Generar número de contrato automáticamente si no se proporciona
+  if (!numero_contrato) {
+    numero_contrato = await generarNumeroContrato();
+  }
 
   const cliente = await Usuario.buscarPorId(cliente_id);
   if (!cliente) throw { status: 404, mensaje: 'Cliente no encontrado' };
@@ -123,11 +151,10 @@ const obtenerContrato = async (id) => {
  * @throws {Error} Si cliente no existe (404)
  */
 // backend/src/services/contratos/contratoService.js
-const listarContratosPorCliente = async (clienteId) => {
-  console.log('[contratoService] listarContratosPorCliente - clienteId:', clienteId);
-  const result = await Contrato.listarPorCliente(clienteId);
-  console.log('[contratoService] Resultado:', result);
-  return result;
+const listarContratosPorCliente = async (cliente_id) => {
+  const cliente = await Usuario.buscarPorId(cliente_id);
+  if (!cliente) throw { status: 404, mensaje: 'Cliente no encontrado' };
+  return await Contrato.listarPorCliente(cliente_id);
 };
 
 /**
@@ -238,26 +265,57 @@ const validarCliente = async (cliente_id, origen, destino, tipo_unidad) => {
  * @param {Object} datos - Datos del descuento
  * @param {string} datos.tipo_unidad - Tipo de unidad: LIGERA, PESADA, CABEZAL
  * @param {number} datos.porcentaje_descuento - Porcentaje de descuento (0-100)
+ * @param {string} [datos.observacion] - Observación o razón del descuento
  * @param {number} usuario_ejecutor - ID del usuario que autoriza (para auditoría)
  * @param {string} ip - Dirección IP del cliente (para auditoría)
  * @returns {Promise<Object>} Descuento creado
- * @throws {Error} Si contrato no existe o no está vigente
+ * @throws {Error} Si contrato no existe, no está vigente, o datos son inválidos
  */
 const agregarDescuento = async (contrato_id, datos, usuario_ejecutor, ip) => {
+  const { tipo_unidad, porcentaje_descuento } = datos;
+
+  // Validar contrato
   const contrato = await Contrato.buscarPorId(contrato_id);
   if (!contrato) throw { status: 404, mensaje: 'Contrato no encontrado' };
   if (contrato.estado !== 'VIGENTE') {
     throw { status: 400, mensaje: 'Solo se pueden agregar descuentos a contratos vigentes' };
   }
 
-  const descuento = await Descuento.crearDescuento({ contrato_id, ...datos, autorizado_por: usuario_ejecutor });
+  // Validar tipo de unidad
+  const tiposValidos = ['LIGERA', 'PESADA', 'CABEZAL'];
+  const tipoNormalizado = tipo_unidad.toUpperCase();
+  if (!tiposValidos.includes(tipoNormalizado)) {
+    throw { status: 400, mensaje: `Tipo de unidad inválido. Debe ser: ${tiposValidos.join(', ')}` };
+  }
+
+  // Validar rango de descuento
+  if (porcentaje_descuento < 0 || porcentaje_descuento > 100) {
+    throw { status: 400, mensaje: 'El descuento debe estar entre 0 y 100%' };
+  }
+
+  // Verificar que no exista descuento duplicado
+  const descuentoExistente = await Descuento.buscarPorContratoYTipo(contrato_id, tipoNormalizado);
+  if (descuentoExistente) {
+    throw { 
+      status: 409, 
+      mensaje: `Ya existe un descuento para ${tipoNormalizado} en este contrato. Puedes actualizar el existente.` 
+    };
+  }
+
+  const descuento = await Descuento.crearDescuento({ 
+    contrato_id, 
+    tipo_unidad: tipoNormalizado,
+    porcentaje_descuento,
+    observacion: datos.observacion || null,
+    autorizado_por: usuario_ejecutor 
+  });
 
   await Auditoria.registrar({
     tabla_afectada: 'descuentos_contrato',
     accion:         'CREATE',
     registro_id:    descuento.id,
     usuario_id:     usuario_ejecutor,
-    descripcion:    `Descuento especial agregado al contrato ${contrato.numero_contrato}`,
+    descripcion:    `Descuento especial de ${porcentaje_descuento}% para ${tipoNormalizado} agregado al contrato ${contrato.numero_contrato}`,
     datos_nuevos:   descuento,
     ip_origen:      ip
   });
@@ -301,13 +359,30 @@ const agregarRuta = async (contrato_id, datos, usuario_ejecutor, ip) => {
   return ruta;
 };
 
+/**
+ * @async
+ * @function obtenerProxNumeroContrato
+ * @description Obtiene el próximo número de contrato a generar
+ * Útil para mostrar en el formulario antes de crear el contrato
+ * @returns {Promise<Object>} Objeto con el próximo número
+ * @example
+ * const { numero_contrato } = await obtenerProxNumeroContrato();
+ * // Resultado: { numero_contrato: 'CTR-2026-00015' }
+ */
+const obtenerProxNumeroContrato = async () => {
+  const numeroContrato = await generarNumeroContrato();
+  return { numero_contrato: numeroContrato };
+};
+
 module.exports = {
   crearContrato,
   obtenerContrato,
   listarContratosPorCliente,
-  listarTodosContratos,  // NUEVO
+  listarTodosContratos,  
   modificarContrato,
   validarCliente,
   agregarDescuento,
-  agregarRuta
+  agregarRuta,
+  generarNumeroContrato,
+  obtenerProxNumeroContrato
 };

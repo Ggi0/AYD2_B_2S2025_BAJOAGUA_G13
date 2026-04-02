@@ -95,7 +95,7 @@ const buscarPorContratoYTipo = async (contrato_id, tipo_unidad) => {
   const pool = await getConnection();
   const result = await pool.request()
     .input('contrato_id', sql.Int,      contrato_id)
-    .input('tipo_unidad', sql.NVarChar, tipo_unidad)
+    .input('tipo_unidad', sql.NVarChar, tipo_unidad.toUpperCase())
     .query(`
       SELECT d.id, d.tipo_unidad, d.porcentaje_descuento,
              d.observacion, d.fecha_autorizacion,
@@ -103,7 +103,7 @@ const buscarPorContratoYTipo = async (contrato_id, tipo_unidad) => {
       FROM descuentos_contrato d
       LEFT JOIN usuarios u ON u.id = d.autorizado_por
       WHERE d.contrato_id = @contrato_id
-        AND d.tipo_unidad = @tipo_unidad
+        AND UPPER(d.tipo_unidad) = UPPER(@tipo_unidad)
     `);
   return result.recordset[0];
 };

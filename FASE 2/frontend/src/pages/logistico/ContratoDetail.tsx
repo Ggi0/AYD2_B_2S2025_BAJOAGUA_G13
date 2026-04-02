@@ -1,9 +1,10 @@
 // src/pages/logistico/ContratoDetail.tsx
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FaArrowLeft, FaEdit, FaPlus, FaTrash } from 'react-icons/fa';
+import { FaArrowLeft, FaEdit, FaPlus,FaCalendarAlt, FaClock, FaShieldAlt } from 'react-icons/fa';
 import { useContratos } from '../../services/Logistico/hooks/useContratos';
-import { formatMoney, formatDate, getContratoEstadoInfo } from '../../services/Logistico/Logistico';
+import { formatMoney, formatDate, getContratoEstadoInfo, type TarifaNegociada } from '../../services/Logistico/Logistico';
+import type { RutaAutorizada } from '../../services/api';
 import LogisticHeader from '../../components/logistico/LogisticHeader';
 import LogisticMenu from '../../components/logistico/LogisticMenu';
 import { useAuth } from '../../context/AuthContext';
@@ -20,6 +21,27 @@ interface RutaForm {
   distancia_km: number;
   tipo_carga: string;
 }
+
+// Rutas comunes predefinidas
+const RUTAS_COMUNES = [
+  { origen: 'Quetzaltenango', destino: 'Guatemala' },
+  { origen: 'Quetzaltenango', destino: 'Puerto Barrios' },
+  { origen: 'Guatemala', destino: 'Quetzaltenango' },
+  { origen: 'Guatemala', destino: 'Puerto Barrios' },
+  { origen: 'Puerto Barrios', destino: 'Quetzaltenango' },
+  { origen: 'Puerto Barrios', destino: 'Guatemala' }
+];
+
+// Tipos de carga disponibles
+const TIPOS_CARGA = [
+  'General',
+  'Refrigerado',
+  'Frágil',
+  'Peligroso',
+  'Granel',
+  'Contenedor',
+  'Carga Pesada'
+];
 
 const ContratoDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -42,6 +64,9 @@ const ContratoDetail: React.FC = () => {
     distancia_km: 0,
     tipo_carga: ''
   });
+
+  const [tipoRuta, setTipoRuta] = useState<'comun' | 'personalizada'>('comun');
+  const [rutaSeleccionada, setRutaSeleccionada] = useState<string>('');
 
   const userName = user?.nombres && user?.apellidos 
     ? `${user.nombres} ${user.apellidos}`
@@ -71,17 +96,40 @@ const ContratoDetail: React.FC = () => {
 
   const handleAgregarRuta = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (id && rutaData.origen && rutaData.destino) {
+    
+    let rutaParaAgregar = rutaData;
+    
+    // Si es ruta común, cargar datos de la ruta seleccionada
+    if (tipoRuta === 'comun' && rutaSeleccionada) {
+      const rutaComun = RUTAS_COMUNES[parseInt(rutaSeleccionada)];
+      rutaParaAgregar = { ...rutaData, origen: rutaComun.origen, destino: rutaComun.destino };
+    }
+    
+    if (rutaParaAgregar.origen && rutaParaAgregar.destino) {
+      // Verificar si la ruta ya existe
+      const existe = contratoActual?.rutas?.some(r => 
+        r.origen === rutaParaAgregar.origen && r.destino === rutaParaAgregar.destino
+      );
+      
+      if (existe) {
+        alert(`La ruta ${rutaParaAgregar.origen} → ${rutaParaAgregar.destino} ya existe`);
+        return;
+      }
+      
       await agregarRuta(
-        parseInt(id),
-        rutaData.origen,
-        rutaData.destino,
-        rutaData.distancia_km || undefined,
-        rutaData.tipo_carga || undefined
+        parseInt(id!),
+        rutaParaAgregar.origen,
+        rutaParaAgregar.destino,
+        rutaParaAgregar.distancia_km || undefined,
+        rutaParaAgregar.tipo_carga || undefined
       );
       setShowRutaForm(false);
       setRutaData({ origen: '', destino: '', distancia_km: 0, tipo_carga: '' });
-      obtenerContrato(parseInt(id));
+      setTipoRuta('comun');
+      setRutaSeleccionada('');
+      obtenerContrato(parseInt(id!));
+    } else {
+      alert('Complete los campos requeridos');
     }
   };
 
@@ -124,27 +172,27 @@ const ContratoDetail: React.FC = () => {
       <LogisticMenu />
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div className="flex items-center space-x-4">
+        {/* Header Mejorado */}
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-8 bg-gradient-to-r from-orange-600 to-orange-700 rounded-xl p-6 text-white shadow-lg">
+          <div className="flex items-start space-x-4">
             <button
               onClick={() => navigate('/logistico/contratos')}
-              className="flex items-center text-gray-600 hover:text-gray-900"
+              className="flex items-center text-white hover:bg-orange-500 px-3 py-2 rounded-lg transition-colors"
             >
-              <FaArrowLeft className="h-4 w-4 mr-2" />
-              Volver
+              <FaArrowLeft className="h-5 w-5" />
             </button>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{contratoActual.numero_contrato}</h1>
-              <p className="text-gray-600 mt-1">Cliente: {contratoActual.cliente_nombre}</p>
+              <h1 className="text-3xl font-bold">{contratoActual.numero_contrato}</h1>
+              <p className="text-orange-100 mt-1"> {contratoActual.cliente_nombre}</p>
+              <p className="text-orange-100 text-sm">NIT: {contratoActual.cliente_nit}</p>
             </div>
           </div>
           <button
             onClick={() => navigate(`/logistico/contratos/${id}/editar`)}
-            className="flex items-center px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
+            className="flex items-center px-4 py-2 bg-white text-orange-600 rounded-lg hover:bg-orange-50 transition-colors font-semibold shadow-md"
           >
             <FaEdit className="h-4 w-4 mr-2" />
-            Editar
+            Editar Contrato
           </button>
         </div>
 
@@ -158,24 +206,41 @@ const ContratoDetail: React.FC = () => {
           </div>
         )}
 
-        {/* Información General */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Información General</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div>
-              <p className="text-sm text-gray-500">NIT Cliente</p>
-              <p className="font-medium">{contratoActual.cliente_nit || 'N/A'}</p>
+        {/* Información General Mejorada */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          {/* NIT Cliente */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-600 uppercase">NIT Cliente</p>
+              <FaShieldAlt className="h-4 w-4 text-blue-500" />
             </div>
-            <div>
-              <p className="text-sm text-gray-500">Vigencia</p>
-              <p className="font-medium">{formatDate(contratoActual.fecha_inicio)} - {formatDate(contratoActual.fecha_fin)}</p>
+            <p className="text-xl font-bold text-gray-900">{contratoActual.cliente_nit || 'N/A'}</p>
+          </div>
+          
+          {/* Vigencia */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-600 uppercase">Vigencia</p>
+              <FaCalendarAlt className="h-4 w-4 text-purple-500" />
             </div>
-            <div>
-              <p className="text-sm text-gray-500">Plazo de Pago</p>
-              <p className="font-medium">{contratoActual.plazo_pago} días</p>
+            <p className="text-sm font-bold text-gray-900">{formatDate(contratoActual.fecha_inicio)}</p>
+            <p className="text-xs text-gray-500">→ {formatDate(contratoActual.fecha_fin)}</p>
+          </div>
+          
+          {/* Plazo de Pago */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-600 uppercase">Plazo Pago</p>
+              <FaClock className="h-4 w-4 text-amber-500" />
             </div>
-            <div>
-              <p className="text-sm text-gray-500">Estado</p>
+            <p className="text-2xl font-bold text-gray-900">{contratoActual.plazo_pago}</p>
+            <p className="text-xs text-gray-500">días</p>
+          </div>
+          
+          {/* Estado */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-600 uppercase">Estado</p>
               <span className={`px-2 py-1 text-xs font-semibold rounded-full ${estadoInfo.bg} ${estadoInfo.color}`}>
                 {estadoInfo.label}
               </span>
@@ -214,13 +279,13 @@ const ContratoDetail: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {contratoActual.tarifas_negociadas?.map((tarifa, idx) => (
+                {contratoActual.tarifas?.map((tarifa: TarifaNegociada, idx: number) => (
                   <tr key={idx} className="border-t">
                     <td className="px-4 py-2">{tarifa.tipo_unidad}</td>
                     <td className="px-4 py-2">{formatMoney(tarifa.costo_km_negociado)}/km</td>
                   </tr>
                 ))}
-                {(!contratoActual.tarifas_negociadas || contratoActual.tarifas_negociadas.length === 0) && (
+                {(!contratoActual.tarifas || contratoActual.tarifas.length === 0) && (
                   <tr>
                     <td colSpan={2} className="px-4 py-4 text-center text-gray-500">
                       No hay tarifas negociadas
@@ -257,9 +322,9 @@ const ContratoDetail: React.FC = () => {
                     required
                   >
                     <option value="">Seleccionar</option>
-                    <option value="Moto">Moto</option>
-                    <option value="Auto">Auto</option>
-                    <option value="Camión">Camión</option>
+                    <option value="LIGERA">Ligera</option>
+                    <option value="PESADA">Pesada</option>
+                    <option value="CABEZAL">Cabezal</option>
                   </select>
                 </div>
                 <div>
@@ -344,27 +409,79 @@ const ContratoDetail: React.FC = () => {
           
           {showRutaForm && (
             <form onSubmit={handleAgregarRuta} className="mb-4 p-4 bg-gray-50 rounded-lg">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Origen *</label>
-                  <input
-                    type="text"
-                    value={rutaData.origen}
-                    onChange={(e) => setRutaData({ ...rutaData, origen: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+              {/* Tabs: Ruta Común o Personalizada */}
+              <div className="flex space-x-4 mb-4 border-b border-gray-300">
+                <button
+                  type="button"
+                  onClick={() => setTipoRuta('comun')}
+                  className={`px-4 py-2 text-sm font-medium transition-colors ${
+                    tipoRuta === 'comun'
+                      ? 'text-orange-600 border-b-2 border-orange-600'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Ruta Común (6 habituales)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTipoRuta('personalizada')}
+                  className={`px-4 py-2 text-sm font-medium transition-colors ${
+                    tipoRuta === 'personalizada'
+                      ? 'text-orange-600 border-b-2 border-orange-600'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Ruta Personalizada
+                </button>
+              </div>
+
+              {tipoRuta === 'comun' ? (
+                // Seleccionar ruta común
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Selecciona una ruta</label>
+                  <select
+                    value={rutaSeleccionada}
+                    onChange={(e) => setRutaSeleccionada(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                     required
-                  />
+                  >
+                    <option value="">- Seleccionar una ruta -</option>
+                    {RUTAS_COMUNES.map((ruta, idx) => (
+                      <option key={idx} value={idx}>
+                        {ruta.origen} → {ruta.destino}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Destino *</label>
-                  <input
-                    type="text"
-                    value={rutaData.destino}
-                    onChange={(e) => setRutaData({ ...rutaData, destino: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                    required
-                  />
+              ) : (
+                // Ingresar ruta personalizada
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Origen *</label>
+                    <input
+                      type="text"
+                      value={rutaData.origen}
+                      onChange={(e) => setRutaData({ ...rutaData, origen: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      placeholder="ej: Escuintla"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Destino *</label>
+                    <input
+                      type="text"
+                      value={rutaData.destino}
+                      onChange={(e) => setRutaData({ ...rutaData, destino: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                      placeholder="ej: Cobán"
+                      required
+                    />
+                  </div>
                 </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Distancia (km)</label>
                   <input
@@ -373,19 +490,25 @@ const ContratoDetail: React.FC = () => {
                     onChange={(e) => setRutaData({ ...rutaData, distancia_km: parseFloat(e.target.value) })}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg"
                     step="0.01"
+                    placeholder="0.00"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Carga</label>
-                  <input
-                    type="text"
+                  <select
                     value={rutaData.tipo_carga}
                     onChange={(e) => setRutaData({ ...rutaData, tipo_carga: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  />
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  >
+                    <option value="">- Seleccionar -</option>
+                    {TIPOS_CARGA.map((tipo) => (
+                      <option key={tipo} value={tipo}>{tipo}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
-              <div className="mt-3 flex justify-end space-x-2">
+
+              <div className="flex justify-end space-x-2">
                 <button
                   type="button"
                   onClick={() => setShowRutaForm(false)}
@@ -403,7 +526,7 @@ const ContratoDetail: React.FC = () => {
             </form>
           )}
           
-          {contratoActual.rutas_autorizadas && contratoActual.rutas_autorizadas.length > 0 ? (
+          {contratoActual.rutas && contratoActual.rutas.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="min-w-full">
                 <thead className="bg-gray-50">
@@ -415,7 +538,7 @@ const ContratoDetail: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {contratoActual.rutas_autorizadas.map((ruta, idx) => (
+                  {contratoActual.rutas.map((ruta: RutaAutorizada, idx: number) => (
                     <tr key={idx} className="border-t">
                       <td className="px-4 py-2">{ruta.origen}</td>
                       <td className="px-4 py-2">{ruta.destino}</td>
