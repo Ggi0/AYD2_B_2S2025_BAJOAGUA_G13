@@ -12,6 +12,7 @@ import PrincipalLogistico from './pages/logistico/PrincipalLogistico';
 import ContratosList from './pages/logistico/ContratosList';
 import ContratoForm from './pages/logistico/ContratoForm';
 import ContratoDetail from './pages/logistico/ContratoDetail';
+import ClientesList from './pages/logistico/ClientesList';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import FacturacionPage from './pages/finanzas/FacturacionPage';
 import PagosPage from './pages/finanzas/PagosPage';
@@ -153,7 +154,7 @@ function App() {
             path="/logistico/clientes"
             element={
               <ProtectedRoute allowedRoles={['logistic', 'logistico', 'operativo', 'admin']}>
-                <PrincipalLogistico />
+                <ClientesList />
               </ProtectedRoute>
             }
           />

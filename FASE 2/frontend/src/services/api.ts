@@ -147,7 +147,7 @@ class ApiService {
     return this.baseUrl;
   }
 
-  private async request<T>(endpoint: string, options: RequestInit): Promise<ApiResponse<T>> {
+  public async request<T>(endpoint: string, options: RequestInit): Promise<ApiResponse<T>> {
     const token = this.getToken();
     const response = await fetch(`${this.baseUrl}${endpoint}`, {
       headers: {
