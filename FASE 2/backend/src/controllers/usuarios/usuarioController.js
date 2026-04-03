@@ -76,11 +76,76 @@ const obtenerRiesgoCliente = async (req, res) => {
   }
 };
 
+/**
+ * @async
+ * @route POST /api/usuarios
+ * @description Crear nuevo usuario/cliente corporativo con estado inicial PENDIENTE_ACEPTACION
+ * @requires auth - requireAuth middleware
+ * @body {string} nombre - Nombre del cliente
+ * @body {string} email - Email único
+ * @body {string} nit - NIT único
+ * @body {string} telefono - Teléfono (opcional)
+ * @body {string} tipo_usuario - tipo (CLIENTE_CORPORATIVO, PILOTO, etc)
+ * @body {string} estado - Estado inicial (generalmente PENDIENTE_ACEPTACION para corporativos)
+ * @body {string} password - Contraseña en texto plano
+ * @returns {201} Usuario creado con id, nombre, email, nit, tipo_usuario, estado
+ */
+const crearCliente = async (req, res) => {
+  try {
+    const { nombre, email, nit, telefono, tipo_usuario, estado, password } = req.body;
+    const usuario_ejecutor = req.user ? Number(req.user.sub) : null;
+    const ip = req.ip;
+
+    // Validar que password esté presente
+    if (!password) {
+      return res.status(400).json({ ok: false, mensaje: 'La contraseña es obligatoria' });
+    }
+
+    // Hash de password
+    const bcrypt = require('bcrypt');
+    const saltRounds = 10;
+    const password_hash = await bcrypt.hash(password, saltRounds);
+
+    // Llamar servicio con datos completos
+    const usuarioCreado = await usuarioService.crearCliente(
+      {
+        nombre,
+        email,
+        nit,
+        telefono: telefono || null,
+        tipo_usuario,
+        estado,
+        password_hash
+      },
+      usuario_ejecutor,
+      ip
+    );
+
+    res.status(201).json({
+      ok: true,
+      mensaje: 'Cliente creado correctamente',
+      data: {
+        id: usuarioCreado.id,
+        nombre: usuarioCreado.nombre,
+        email: usuarioCreado.email,
+        nit: usuarioCreado.nit,
+        telefono: usuarioCreado.telefono,
+        tipo_usuario: usuarioCreado.tipo_usuario,
+        estado: usuarioCreado.estado,
+        fecha_registro: usuarioCreado.fecha_registro
+      }
+    });
+  } catch (error) {
+    res.status(error.status || 500).json({ ok: false, mensaje: error.mensaje || 'Error al crear cliente' });
+  }
+};
+
 module.exports = {
   listarUsuarios,
   obtenerUsuario,
   modificarUsuario,
   cambiarEstadoUsuario,
   crearRiesgoCliente,
-  obtenerRiesgoCliente
+  obtenerRiesgoCliente,
+  crearCliente
 };

@@ -151,7 +151,18 @@ const agregarRuta = async (req, res) => {
   }
 };
 
-
+/**
+ * GET /api/contratos/estadisticas/dashboard
+ * @description Obtiene estadísticas del dashboard logístico
+ */
+const obtenerEstadisticasDashboard = async (req, res) => {
+  try {
+    const stats = await contratoService.obtenerEstadisticasDashboard();
+    res.status(200).json({ ok: true, data: stats });
+  } catch (error) {
+    res.status(error.status || 500).json({ ok: false, mensaje: error.mensaje || 'Error al obtener estadísticas' });
+  }
+};
 
 module.exports = {
   crearContrato,
@@ -162,5 +173,6 @@ module.exports = {
   modificarContrato,
   validarCliente,
   agregarDescuento,
-  agregarRuta
+  agregarRuta,
+  obtenerEstadisticasDashboard
 };

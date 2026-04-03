@@ -13,6 +13,7 @@
 const Usuario      = require('../../models/usuarios/Usuario');
 const RiesgoCliente = require('../../models/usuarios/RiesgoCliente');
 const Auditoria    = require('../../models/auditoria/Auditoria');
+const { notificarCuentaInactiva, notificarCuentaActivada, notificarClienteAceptado } = require('../../utils/notificaciones');
 
 /**
  * @async
@@ -101,9 +102,9 @@ const modificarUsuario = async (id, datos, usuario_ejecutor, ip) => {
  * @async
  * @function cambiarEstadoUsuario
  * @description Cambia el estado de un usuario
- * Estados válidos: ACTIVO, INACTIVO, BLOQUEADO
+ * Estados válidos: PENDIENTE_ACEPTACION, ACTIVO, INACTIVO, BLOQUEADO
  * @param {number} id - ID del usuario
- * @param {string} estado - Nuevo estado (ACTIVO|INACTIVO|BLOQUEADO)
+ * @param {string} estado - Nuevo estado (PENDIENTE_ACEPTACION|ACTIVO|INACTIVO|BLOQUEADO)
  * @param {string} motivo - Motivo del cambio de estado
  * @param {number} usuario_ejecutor - ID del usuario que ejecuta el cambio (para auditoría)
  * @param {string} ip - Dirección IP del cliente (para auditoría)
@@ -111,7 +112,7 @@ const modificarUsuario = async (id, datos, usuario_ejecutor, ip) => {
  * @throws {Error} Si usuario no existe o estado es inválido
  */
 const cambiarEstadoUsuario = async (id, estado, motivo, usuario_ejecutor, ip) => {
-  const estadosValidos = ['ACTIVO', 'INACTIVO', 'BLOQUEADO'];
+  const estadosValidos = ['PENDIENTE_ACEPTACION', 'ACTIVO', 'INACTIVO', 'BLOQUEADO'];
   if (!estadosValidos.includes(estado)) {
     throw { status: 400, mensaje: `Estado inválido. Los estados válidos son: ${estadosValidos.join(', ')}` };
   }
@@ -132,6 +133,31 @@ const cambiarEstadoUsuario = async (id, estado, motivo, usuario_ejecutor, ip) =>
     ip_origen:        ip
   });
 
+  // Enviar correos de notificación
+  try {
+    // Si se desactiva la cuenta (cambio a INACTIVO)
+    if (estado === 'INACTIVO' && usuarioActual.estado !== 'INACTIVO') {
+      await notificarCuentaInactiva(
+        { email: usuarioActual.email, nombre: usuarioActual.nombre }
+      );
+    }
+    // Si se acepta un cliente nuevo (cambio de PENDIENTE_ACEPTACION a ACTIVO)
+    else if (estado === 'ACTIVO' && usuarioActual.estado === 'PENDIENTE_ACEPTACION') {
+      await notificarClienteAceptado(
+        { email: usuarioActual.email, nombre: usuarioActual.nombre }
+      );
+    }
+    // Si se reactiva la cuenta (cambio a ACTIVO desde INACTIVO)
+    else if (estado === 'ACTIVO' && usuarioActual.estado === 'INACTIVO') {
+      await notificarCuentaActivada(
+        { email: usuarioActual.email, nombre: usuarioActual.nombre }
+      );
+    }
+  } catch (errorCorreo) {
+    // No bloquear la operación si hay error en el correo
+    console.error(`[cambiarEstadoUsuario] Error al enviar notificación: ${errorCorreo.message}`);
+  }
+
   return usuarioActualizado;
 };
 
@@ -139,6 +165,7 @@ const cambiarEstadoUsuario = async (id, estado, motivo, usuario_ejecutor, ip) =>
  * @async
  * @function crearRiesgoCliente
  * @description Crea una evaluación de riesgo para un cliente corporativo
+ * Si el cliente está en estado PENDIENTE_ACEPTACION, lo activa automáticamente
  * Evalúa 4 niveles de riesgo: capacidad de pago, lavado de dinero, aduanas, mercancía
  * @param {number} usuario_id - ID del cliente corporativo
  * @param {Object} datos - Niveles de riesgo a evaluar
@@ -182,6 +209,31 @@ const crearRiesgoCliente = async (usuario_id, datos, usuario_ejecutor, ip) => {
     ip_origen:      ip
   });
 
+  // Si el cliente estaba pendiente de aceptación, activarlo automáticamente
+  if (usuario.estado === 'PENDIENTE_ACEPTACION') {
+    const usuarioActualizado = await Usuario.cambiarEstado(usuario_id, 'ACTIVO');
+    
+    await Auditoria.registrar({
+      tabla_afectada:   'usuarios',
+      accion:           'UPDATE',
+      registro_id:      usuario_id,
+      usuario_id:       usuario_ejecutor,
+      descripcion:      `Cliente corporativo ${usuario.nombre} aceptado y activado después de evaluación de riesgo`,
+      datos_anteriores: { estado: usuario.estado },
+      datos_nuevos:     { estado: 'ACTIVO' },
+      ip_origen:        ip
+    });
+
+    // Enviar notificación de aceptación (para clientes nuevos que pasan de PENDIENTE a ACTIVO)
+    try {
+      await notificarClienteAceptado(
+        { email: usuario.email, nombre: usuario.nombre }
+      );
+    } catch (errorCorreo) {
+      console.error(`[crearRiesgoCliente] Error al enviar notificación: ${errorCorreo.message}`);
+    }
+  }
+
   return riesgo;
 };
 
@@ -206,11 +258,68 @@ const obtenerRiesgoCliente = async (usuario_id) => {
   return riesgo;
 };
 
+/**
+ * @async
+ * @function crearCliente
+ * @description Crea un nuevo usuario/cliente en el sistema
+ * Usado por administrador para crear clientes corporativos con estado PENDIENTE_ACEPTACION
+ * @param {Object} datos - Datos del usuario
+ * @param {string} datos.nit - NIT único
+ * @param {string} datos.nombre - Nombre completo
+ * @param {string} datos.email - Email único
+ * @param {string} datos.telefono - Teléfono (opcional)
+ * @param {string} datos.tipo_usuario - Tipo (CLIENTE_CORPORATIVO, PILOTO, etc)
+ * @param {string} datos.estado - Estado: PENDIENTE_ACEPTACION, ACTIVO, etc
+ * @param {string} datos.password_hash - Contraseña hasheada
+ * @param {number} usuario_ejecutor - ID del admin que crea (para auditoría)
+ * @param {string} ip - Dirección IP (para auditoría)
+ * @returns {Promise<Object>} Usuario creado
+ * @throws {Error} Si email o nit ya existen
+ */
+const crearCliente = async (datos, usuario_ejecutor, ip) => {
+  // Validaciones básicas
+  if (!datos.nombre || !datos.email || !datos.nit || !datos.tipo_usuario) {
+    throw { status: 400, mensaje: 'Campos requeridos: nombre, email, nit, tipo_usuario' };
+  }
+
+  // Verificar que el email no exista
+  const usuarioPorEmail = await Usuario.buscarPorEmail(datos.email);
+  if (usuarioPorEmail) {
+    throw { status: 400, mensaje: 'El email ya está registrado' };
+  }
+
+  // Verificar que el nit no exista
+  const usuarioPorNit = await Usuario.buscarPorNit(datos.nit);
+  if (usuarioPorNit) {
+    throw { status: 400, mensaje: 'El NIT ya está registrado' };
+  }
+
+  //  Crear el usuario
+  const usuarioCreado = await Usuario.crearCliente({
+    ...datos,
+    creado_por: usuario_ejecutor
+  });
+
+  // Registrar en auditoría
+  await Auditoria.registrar({
+    tabla_afectada: 'usuarios',
+    accion: 'CREATE',
+    registro_id: usuarioCreado.id,
+    usuario_id: usuario_ejecutor,
+    descripcion: `Nuevo usuario creado: ${usuarioCreado.nombre} (${usuarioCreado.tipo_usuario}) - Estado: ${usuarioCreado.estado}`,
+    datos_nuevos: usuarioCreado,
+    ip_origen: ip
+  });
+
+  return usuarioCreado;
+};
+
 module.exports = {
   obtenerUsuario,
   listarUsuarios,
   modificarUsuario,
   cambiarEstadoUsuario,
   crearRiesgoCliente,
-  obtenerRiesgoCliente
+  obtenerRiesgoCliente,
+  crearCliente
 };

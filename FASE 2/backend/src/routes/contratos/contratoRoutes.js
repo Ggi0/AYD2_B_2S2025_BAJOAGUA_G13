@@ -11,7 +11,8 @@ const {
   modificarContrato,
   validarCliente,
   agregarDescuento,
-  agregarRuta
+  agregarRuta,
+  obtenerEstadisticasDashboard
 } = require('../../controllers/contratos/contratoController');
 
 /**
@@ -19,6 +20,12 @@ const {
  * @description Crea un nuevo contrato con tarifas negociadas y rutas autorizadas
  */
 router.post('/', requireAuth, crearContrato);
+
+/**
+ * GET /api/contratos/estadisticas/dashboard
+ * @description Obtiene estadísticas del dashboard logístico
+ */
+router.get('/estadisticas/dashboard', requireAuth, obtenerEstadisticasDashboard);
 
 /**
  * GET /api/contratos/obtener-numero-proximo
