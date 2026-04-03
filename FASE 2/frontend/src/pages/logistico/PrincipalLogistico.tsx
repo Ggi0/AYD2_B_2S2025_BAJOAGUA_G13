@@ -68,7 +68,7 @@ const PrincipalLogistico: React.FC = () => {
   // Cargar estadísticas desde el servidor
   const cargarEstadisticas = async () => {
     try {
-      const token = localStorage.getItem('userToken');
+      const token = localStorage.getItem('authToken');
       console.log('[Frontend] Token disponible:', !!token);
       
       if (!token) {
