@@ -14,6 +14,7 @@ import {
   FaShieldAlt,
   FaExclamationTriangle,
   FaDollarSign,
+  FaFileContract,
 } from 'react-icons/fa';
 import LogisticHeader from '../../components/logistico/LogisticHeader';
 import LogisticMenu from '../../components/logistico/LogisticMenu';
@@ -1158,67 +1159,210 @@ const ClientesList: React.FC = () => {
                   </div>
                 )}
 
-                {/* Contrato Info */}
-                {validacion.contrato && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <h3 className="font-semibold text-blue-900 mb-3 flex items-center space-x-2">
-                      <span>Informacion del Contrato</span>
+                {/* Contratos Vigentes - CONSOLIDADO CON CRÉDITO */}
+                {(validacion.contratos_resumen?.contratos && validacion.contratos_resumen.contratos.length > 0) || validacion.contrato ? (
+                  <div className="bg-gradient-to-r from-blue-50 to-blue-100 border-2 border-blue-300 rounded-lg p-5">
+                    <h3 className="font-bold text-blue-900 mb-4 text-lg flex items-center space-x-2">
+                      <FaFileContract className="h-5 w-5" />
+                      <span>
+                        Contratos Vigentes 
+                        {validacion.contratos_resumen && validacion.contratos_resumen.cantidad_contratos > 0 && (
+                          <span className="ml-2 px-2 py-1 bg-blue-200 text-blue-800 rounded-full text-sm">
+                            {validacion.contratos_resumen.cantidad_contratos}
+                          </span>
+                        )}
+                      </span>
                     </h3>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div>
-                        <span className="text-blue-600">Número:</span>
-                        <p className="font-mono text-gray-900">{validacion.contrato.numero_contrato}</p>
-                      </div>
-                      <div>
-                        <span className="text-blue-600">Vencimiento:</span>
-                        <p className="text-gray-900">{new Date(validacion.contrato.fecha_fin).toLocaleDateString('es-GT')}</p>
-                      </div>
-                      <div>
-                        <span className="text-blue-600">Plazo de Pago:</span>
-                        <p className="text-gray-900">{validacion.contrato.plazo_pago} dias</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                    
+                    {/* Mostrar todos los contratos del resumen CON CRÉDITO INTEGRADO */}
+                    {validacion.contratos_resumen?.contratos && validacion.contratos_resumen.contratos.length > 0 ? (
+                      <div className="space-y-4">
+                        {validacion.contratos_resumen.contratos.map((contrato, idx) => {
+                          const porcentaje = Math.round((contrato.saldo_usado / contrato.limite_credito) * 100);
+                          const estaBloqueado = contrato.saldo_usado >= contrato.limite_credito;
+                          return (
+                            <div key={idx} className="border-l-4 border-blue-500 bg-white rounded-lg p-4 shadow-sm">
+                              {/* Fila 1: Número, Vencimiento, Plazo */}
+                              <div className="grid grid-cols-3 gap-4 mb-4 pb-4 border-b border-gray-200">
+                                <div>
+                                  <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2">Número</p>
+                                  <p className="text-lg font-mono font-bold text-blue-900 break-all">{contrato.numero_contrato}</p>
+                                </div>
+                                <div>
+                                  <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2">Vencimiento</p>
+                                  <p className={`text-lg font-bold ${new Date(contrato.fecha_fin || new Date()) < new Date() ? 'text-red-700' : 'text-green-700'}`}>
+                                    {contrato.fecha_fin ? new Date(contrato.fecha_fin).toLocaleDateString('es-GT') : 'N/A'}
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2">Plazo de Pago</p>
+                                  <div className="flex items-center space-x-2">
+                                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-blue-200 text-blue-800">
+                                      {contrato.plazo_pago || 'N/A'}
+                                    </span>
+                                    <span className="text-xs text-gray-600">días</span>
+                                  </div>
+                                </div>
+                              </div>
 
-                {/* Crédito Info */}
-                {validacion.contrato && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                    <h3 className="font-semibold text-yellow-900 mb-3 flex items-center space-x-2">
-                      <FaDollarSign className="h-4 w-4" />
-                      <span>Limite de Credito</span>
-                    </h3>
-                    <div className="space-y-3">
-                      <div>
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="text-sm text-yellow-700">Disponible:</span>
-                          <span className="font-semibold text-green-700">Q{validacion.contrato.saldo_disponible?.toLocaleString('es-GT')}</span>
+                              {/* Fila 2: Crédito individual */}
+                              <div>
+                                <div className="grid grid-cols-3 gap-3 text-sm mb-3">
+                                  <div>
+                                    <p className="text-blue-600 text-xs font-semibold">LÍMITE</p>
+                                    <p className="text-lg font-bold text-blue-900">Q{contrato.limite_credito?.toLocaleString('es-GT')}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-red-600 text-xs font-semibold">UTILIZADO</p>
+                                    <p className="text-lg font-bold text-red-700">Q{contrato.saldo_usado?.toLocaleString('es-GT')}</p>
+                                  </div>
+                                  <div>
+                                    <p className="text-green-600 text-xs font-semibold">DISPONIBLE</p>
+                                    <p className="text-lg font-bold text-green-700">Q{contrato.saldo_disponible?.toLocaleString('es-GT')}</p>
+                                  </div>
+                                </div>
+                                
+                                {/* Barra de progreso y porcentaje */}
+                                <div className="flex items-center space-x-3">
+                                  <div className="flex-1 bg-gray-300 rounded-full h-3 overflow-hidden">
+                                    <div
+                                      className={`h-3 transition-all ${
+                                        estaBloqueado ? 'bg-red-600' : porcentaje > 75 ? 'bg-orange-600' : 'bg-green-600'
+                                      }`}
+                                      style={{ width: `${Math.min(porcentaje, 100)}%` }}
+                                    />
+                                  </div>
+                                  <div className="flex items-center space-x-2 min-w-fit">
+                                    {estaBloqueado ? (
+                                      <>
+                                        <FaTimesCircle className="h-5 w-5 text-red-600" />
+                                        <span className="text-sm font-bold text-red-700">{porcentaje}%</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <FaCheckCircle className="h-5 w-5 text-green-600" />
+                                        <span className="text-sm font-bold text-green-700">{porcentaje}%</span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : validacion.contrato ? (
+                      // Fallback si solo hay un contrato
+                      <div className="border-l-4 border-blue-500 bg-white rounded-lg p-4 shadow-sm">
+                        {/* Fila 1: Número, Vencimiento, Plazo */}
+                        <div className="grid grid-cols-3 gap-4 mb-4 pb-4 border-b border-gray-200">
+                          <div>
+                            <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2">Número</p>
+                            <p className="text-lg font-mono font-bold text-blue-900 break-all">{validacion.contrato.numero_contrato}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2">Vencimiento</p>
+                            <p className={`text-lg font-bold ${new Date(validacion.contrato.fecha_fin) < new Date() ? 'text-red-700' : 'text-green-700'}`}>
+                              {new Date(validacion.contrato.fecha_fin).toLocaleDateString('es-GT')}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-2">Plazo de Pago</p>
+                            <div className="flex items-center space-x-2">
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-bold bg-blue-200 text-blue-800">
+                                {validacion.contrato.plazo_pago}
+                              </span>
+                              <span className="text-xs text-gray-600">días</span>
+                            </div>
+                          </div>
                         </div>
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="text-sm text-yellow-700">Utilizado:</span>
-                          <span className="font-semibold text-red-700">Q{validacion.contrato.saldo_usado?.toLocaleString('es-GT')}</span>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <span className="text-sm text-yellow-700">Total Límite:</span>
-                          <span className="font-semibold text-yellow-900">Q{validacion.contrato.limite_credito?.toLocaleString('es-GT')}</span>
+
+                        {/* Fila 2: Crédito individual */}
+                        <div>
+                          <div className="grid grid-cols-3 gap-3 text-sm mb-3">
+                            <div>
+                              <p className="text-blue-600 text-xs font-semibold">LÍMITE</p>
+                              <p className="text-lg font-bold text-blue-900">Q{validacion.contrato.limite_credito?.toLocaleString('es-GT')}</p>
+                            </div>
+                            <div>
+                              <p className="text-red-600 text-xs font-semibold">UTILIZADO</p>
+                              <p className="text-lg font-bold text-red-700">Q{validacion.contrato.saldo_usado?.toLocaleString('es-GT')}</p>
+                            </div>
+                            <div>
+                              <p className="text-green-600 text-xs font-semibold">DISPONIBLE</p>
+                              <p className="text-lg font-bold text-green-700">Q{validacion.contrato.saldo_disponible?.toLocaleString('es-GT')}</p>
+                            </div>
+                          </div>
+                          
+                          {/* Barra de progreso */}
+                          <div className="flex items-center space-x-3">
+                            <div className="flex-1 bg-gray-300 rounded-full h-3 overflow-hidden">
+                              <div
+                                className={`h-3 transition-all ${
+                                  validacion.contrato.saldo_usado >= validacion.contrato.limite_credito ? 'bg-red-600' : validacion.contrato.saldo_usado > validacion.contrato.limite_credito * 0.75 ? 'bg-orange-600' : 'bg-green-600'
+                                }`}
+                                style={{ width: `${Math.min((validacion.contrato.saldo_usado / validacion.contrato.limite_credito) * 100, 100)}%` }}
+                              />
+                            </div>
+                            <div className="flex items-center space-x-2 min-w-fit">
+                              {validacion.contrato.saldo_usado >= validacion.contrato.limite_credito ? (
+                                <>
+                                  <FaTimesCircle className="h-5 w-5 text-red-600" />
+                                  <span className="text-sm font-bold text-red-700">{Math.round((validacion.contrato.saldo_usado / validacion.contrato.limite_credito) * 100)}%</span>
+                                </>
+                              ) : (
+                                <>
+                                  <FaCheckCircle className="h-5 w-5 text-green-600" />
+                                  <span className="text-sm font-bold text-green-700">{Math.round((validacion.contrato.saldo_usado / validacion.contrato.limite_credito) * 100)}%</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </div>
-                      {/* Progress Bar */}
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div
-                          className={`h-2 rounded-full transition-all ${
-                            validacion.contrato.saldo_usado >= validacion.contrato.limite_credito
-                              ? 'bg-red-600'
-                              : validacion.contrato.saldo_usado > validacion.contrato.limite_credito * 0.75
-                              ? 'bg-orange-600'
-                              : 'bg-green-600'
-                          }`}
-                          style={{ width: `${Math.min((validacion.contrato.saldo_usado / validacion.contrato.limite_credito) * 100, 100)}%` }}
-                        />
+                    ) : null}
+
+                    {/* TOTAL AGREGADO - Al final de la sección */}
+                    {validacion.contratos_resumen && validacion.contratos_resumen.cantidad_contratos > 1 && (
+                      <div className="mt-6 pt-6 border-t-2 border-blue-300 bg-blue-50 rounded-lg p-4">
+                        <p className="text-xs font-semibold text-blue-700 uppercase mb-3 flex items-center space-x-2">
+                          <FaDollarSign className="h-4 w-4" />
+                          <span>Total Agregado (Todos los Contratos)</span>
+                        </p>
+                        <div className="grid grid-cols-3 gap-3 text-sm mb-3">
+                          <div>
+                            <p className="text-blue-600 text-xs font-semibold">TOTAL LÍMITE</p>
+                            <p className="text-lg font-bold text-blue-900">Q{validacion.contratos_resumen.total_limite_credito?.toLocaleString('es-GT')}</p>
+                          </div>
+                          <div>
+                            <p className="text-red-600 text-xs font-semibold">TOTAL UTILIZADO</p>
+                            <p className="text-lg font-bold text-red-700">Q{validacion.contratos_resumen.total_saldo_usado?.toLocaleString('es-GT')}</p>
+                          </div>
+                          <div>
+                            <p className="text-green-600 text-xs font-semibold">TOTAL DISPONIBLE</p>
+                            <p className="text-lg font-bold text-green-700">Q{validacion.contratos_resumen.total_saldo_disponible?.toLocaleString('es-GT')}</p>
+                          </div>
+                        </div>
+                        <div className="w-full bg-gray-300 rounded-full h-3">
+                          <div
+                            className={`h-3 rounded-full transition-all font-bold text-xs flex items-center justify-center text-white ${
+                              validacion.contratos_resumen.total_saldo_usado >= validacion.contratos_resumen.total_limite_credito
+                                ? 'bg-red-600'
+                                : validacion.contratos_resumen.total_saldo_usado > validacion.contratos_resumen.total_limite_credito * 0.75
+                                ? 'bg-orange-600'
+                                : 'bg-green-600'
+                            }`}
+                            style={{ width: `${Math.min((validacion.contratos_resumen.total_saldo_usado / validacion.contratos_resumen.total_limite_credito) * 100, 100)}%`, minWidth: validacion.contratos_resumen.total_saldo_usado > 0 ? '40px' : '0' }}
+                          >
+                            {validacion.contratos_resumen.total_saldo_usado > validacion.contratos_resumen.total_limite_credito * 0.3 &&
+                              `${Math.round((validacion.contratos_resumen.total_saldo_usado / validacion.contratos_resumen.total_limite_credito) * 100)}%`
+                            }
+                          </div>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
-                )}
+                ) : null}
 
                 {/* Facturas Pendientes */}
                 {validacion.facturas_pendientes && validacion.facturas_pendientes.length > 0 && (

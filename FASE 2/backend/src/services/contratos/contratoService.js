@@ -241,21 +241,34 @@ const validarCliente = async (cliente_id, origen, destino, tipo_unidad) => {
   }
 
   // ============================================================
-  // VALIDACIÓN 2: Contrato vigente y no expirado
+  // VALIDACIÓN 2: TODOS los contratos vigentes y no expirados
   // ============================================================
-  const contrato = await Contrato.buscarVigentePorCliente(cliente_id);
-  if (!contrato) return { habilitado: false, motivo: 'El cliente no tiene un contrato vigente' };
-
-  // Validar que contrato no esté expirado (fecha_fin < hoy)
-  const fechaFin = new Date(contrato.fecha_fin);
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0); // Normalizar a las 00:00 para comparar solo fechas
-  
-  if (fechaFin < hoy) {
-    // Contrato expiró, cambiar estado
-    await Contrato.cambiarEstado(contrato.id, 'EXPIRADO');
-    return { habilitado: false, motivo: 'El contrato ha expirado' };
+  const contratos = await Contrato.buscarTodosPorCliente(cliente_id);
+  if (!contratos || contratos.length === 0) {
+    return { habilitado: false, motivo: 'El cliente no tiene un contrato vigente' };
   }
+
+  // Validar que al menos UNO de los contratos no esté expirado y actualizar estados si es necesario
+  const contratosActivos = [];
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+
+  for (const contrato of contratos) {
+    const fechaFin = new Date(contrato.fecha_fin);
+    if (fechaFin < hoy) {
+      // Contrato expiró, cambiar estado
+      await Contrato.cambiarEstado(contrato.id, 'EXPIRADO');
+    } else {
+      contratosActivos.push(contrato);
+    }
+  }
+
+  if (contratosActivos.length === 0) {
+    return { habilitado: false, motivo: 'Todos los contratos del cliente han expirado' };
+  }
+
+  // Usar el contrato más reciente para mostrar en respuesta
+  const contratoActual = contratosActivos[0];
 
   // ============================================================
   // VALIDACIÓN 3: Facturas certificadas sin pagar (Bloqueo Automático)
@@ -282,30 +295,43 @@ const validarCliente = async (cliente_id, origen, destino, tipo_unidad) => {
   }
 
   // ============================================================
-  // VALIDACIÓN 5: Límite de crédito no excedido (Bloqueo Automático)
+  // VALIDACIÓN 5: Límite de crédito NO EXCEDIDO EN TODOS LOS CONTRATOS (Bloqueo Automático)
   // ============================================================
-  if (contrato.saldo_usado >= contrato.limite_credito) {
+  // Calcular totales de TODOS los contratos activos
+  const totalLimiteCredito = contratosActivos.reduce((sum, c) => sum + (c.limite_credito || 0), 0);
+  const totalSaldoUsado = contratosActivos.reduce((sum, c) => sum + (c.saldo_usado || 0), 0);
+  const totalCreditoDisponible = totalLimiteCredito - totalSaldoUsado;
+
+  if (totalSaldoUsado >= totalLimiteCredito) {
     // Doble validación: Solo CLIENTE_CORPORATIVO puede ser bloqueado (CA-04)
     if (cliente.tipo_usuario === 'CLIENTE_CORPORATIVO') {
       await Usuario.cambiarEstado(cliente_id, 'BLOQUEADO');
       
       // Enviar notificación de bloqueo automático
       try {
-        await notificarBloqueoPorCredito(cliente, contrato);
+        await notificarBloqueoPorCredito(cliente, contratoActual);
       } catch (errorCorreo) {
         // No bloquear la operación si hay error en el correo
         console.error(`[validarCliente] Error al enviar notificación: ${errorCorreo.message}`);
       }
     }
     
-    return { habilitado: false, motivo: 'Límite de crédito excedido. Cliente bloqueado automáticamente' };
+    return { 
+      habilitado: false, 
+      motivo: `Límite de crédito excedido en suma de contratos (Total usado: Q${totalSaldoUsado.toFixed(2)} / Q${totalLimiteCredito.toFixed(2)}). Cliente bloqueado automáticamente`,
+      contratos_resumen: contratosActivos.map(c => ({
+        numero_contrato: c.numero_contrato,
+        limite_credito: c.limite_credito,
+        saldo_usado: c.saldo_usado
+      }))
+    };
   }
 
   // ============================================================
   // VALIDACIÓN 6: Ruta autorizada en contrato
   // ============================================================
   if (origen && destino) {
-    const ruta = await RutaAutorizada.verificarRuta(contrato.id, origen, destino);
+    const ruta = await RutaAutorizada.verificarRuta(contratoActual.id, origen, destino);
     if (!ruta) return { habilitado: false, motivo: `La ruta ${origen} → ${destino} no está autorizada en el contrato` };
   }
 
@@ -315,8 +341,8 @@ const validarCliente = async (cliente_id, origen, destino, tipo_unidad) => {
   let tarifa   = null;
   let descuento = null;
   if (tipo_unidad) {
-    tarifa    = await ContratoTarifa.buscarPorContratoYTipo(contrato.id, tipo_unidad);
-    descuento = await Descuento.buscarPorContratoYTipo(contrato.id, tipo_unidad);
+    tarifa    = await ContratoTarifa.buscarPorContratoYTipo(contratoActual.id, tipo_unidad);
+    descuento = await Descuento.buscarPorContratoYTipo(contratoActual.id, tipo_unidad);
   }
 
   // ============================================================
@@ -326,13 +352,27 @@ const validarCliente = async (cliente_id, origen, destino, tipo_unidad) => {
     habilitado: true,
     cliente: { id: cliente.id, nombre: cliente.nombre, estado: cliente.estado, tipo_usuario: cliente.tipo_usuario },
     contrato: {
-      id:               contrato.id,
-      numero_contrato:  contrato.numero_contrato,
-      fecha_fin:        contrato.fecha_fin,
-      limite_credito:   contrato.limite_credito,
-      saldo_usado:      contrato.saldo_usado,
-      saldo_disponible: contrato.limite_credito - contrato.saldo_usado,
-      plazo_pago:       contrato.plazo_pago
+      id:               contratoActual.id,
+      numero_contrato:  contratoActual.numero_contrato,
+      fecha_fin:        contratoActual.fecha_fin,
+      limite_credito:   contratoActual.limite_credito,
+      saldo_usado:      contratoActual.saldo_usado,
+      saldo_disponible: contratoActual.limite_credito - contratoActual.saldo_usado,
+      plazo_pago:       contratoActual.plazo_pago
+    },
+    contratos_resumen: {
+      total_limite_credito: totalLimiteCredito,
+      total_saldo_usado: totalSaldoUsado,
+      total_saldo_disponible: totalCreditoDisponible,
+      cantidad_contratos: contratosActivos.length,
+      contratos: contratosActivos.map(c => ({
+        numero_contrato: c.numero_contrato,
+        limite_credito: c.limite_credito,
+        saldo_usado: c.saldo_usado,
+        saldo_disponible: c.limite_credito - c.saldo_usado,
+        fecha_fin: c.fecha_fin,
+        plazo_pago: c.plazo_pago
+      }))
     },
     tarifa:    tarifa    ? { tipo_unidad: tarifa.tipo_unidad, costo_km_negociado: tarifa.costo_km_negociado, limite_peso_ton: tarifa.limite_peso_ton } : null,
     descuento: descuento ? { porcentaje_descuento: descuento.porcentaje_descuento } : null

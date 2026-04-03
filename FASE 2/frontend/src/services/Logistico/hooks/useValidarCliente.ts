@@ -23,6 +23,20 @@ export interface ValidacionResultado {
     saldo_disponible: number;
     plazo_pago: number;
   };
+  contratos_resumen?: {
+    total_limite_credito: number;
+    total_saldo_usado: number;
+    total_saldo_disponible: number;
+    cantidad_contratos: number;
+    contratos: Array<{
+      numero_contrato: string;
+      limite_credito: number;
+      saldo_usado: number;
+      saldo_disponible: number;
+      fecha_fin?: string;
+      plazo_pago?: number;
+    }>;
+  };
   tarifa?: {
     tipo_unidad: string;
     costo_km_negociado: number;
@@ -41,6 +55,11 @@ export interface ValidacionResultado {
     monto_original: number;
     saldo_pendiente: number;
     fecha_vencimiento: string;
+  }>;
+  contratos_resumen_bloqueado?: Array<{
+    numero_contrato: string;
+    limite_credito: number;
+    saldo_usado: number;
   }>;
 }
 
