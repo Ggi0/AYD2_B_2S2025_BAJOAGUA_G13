@@ -2,6 +2,8 @@
 const viteEnv = (import.meta as ImportMeta & { env?: { VITE_API_URL?: string } }).env;
 const API_BASE_URL = viteEnv?.VITE_API_URL || "http://localhost:3001/api";
 
+export { API_BASE_URL };
+
 // Tipos exportados con "export type"
 export type ApiResponse<T = any> = {
   ok: boolean;

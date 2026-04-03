@@ -21,6 +21,7 @@ import ValidacionClienteModal from '../../components/logistico/ValidacionCliente
 import { useAuth } from '../../context/AuthContext';
 import { useContratos } from '../../services/Logistico/hooks/useContratos';
 import { formatMoney, formatDate, getContratoEstadoInfo } from '../../services/Logistico/Logistico';
+import { API_BASE_URL } from '../../services/api';
 
 
 interface DashboardStats {
@@ -54,16 +55,57 @@ const PrincipalLogistico: React.FC = () => {
     ? `${user.nombres} ${user.apellidos}`
     : user?.email?.split('@')[0] || 'Operador Logístico';
 
-  // Cargar contratos al montar el componente
+  // Cargar contratos y estadísticas al montar el componente
   useEffect(() => {
     cargarContratos();
   }, []);
 
   const cargarContratos = async () => {
     await listarTodosContratos();
+    await cargarEstadisticas();
   };
 
-  // Calcular estadísticas cuando cambian los contratos
+  // Cargar estadísticas desde el servidor
+  const cargarEstadisticas = async () => {
+    try {
+      const token = localStorage.getItem('userToken');
+      console.log('[Frontend] Token disponible:', !!token);
+      
+      if (!token) {
+        console.warn('[Frontend] No token available for fetching statistics');
+        return;
+      }
+
+      const url = `${API_BASE_URL}/contratos/estadisticas/dashboard`;
+      console.log('[Frontend] Llamando a:', url);
+
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log('[Frontend] Respuesta recibida, status:', response.status);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[Frontend] Datos recibidos:', data);
+        
+        if (data.ok) {
+          console.log('[Frontend] Estableciendo stats:', data.data);
+          setStats(data.data);
+        }
+      } else {
+        const errorText = await response.text();
+        console.error('[Frontend] Error en respuesta:', response.status, errorText);
+      }
+    } catch (error) {
+      console.error('[Frontend] Error al cargar estadísticas:', error);
+    }
+  };
+
+  // Calcular estadísticas cuando cambian los contratos (respaldo)
   useEffect(() => {
     if (todosContratos.length > 0) {
       const vigentes = todosContratos.filter(c => c.estado === 'VIGENTE');
@@ -72,7 +114,6 @@ const PrincipalLogistico: React.FC = () => {
       
       const totalCredito = vigentes.reduce((sum, c) => sum + (c.limite_credito || 0), 0);
       const totalUsado = vigentes.reduce((sum, c) => sum + (c.saldo_usado || 0), 0);
-      const clientesUnicos = new Set(todosContratos.map(c => c.cliente_id)).size;
 
       setStats({
         totalContratos: todosContratos.length,
@@ -81,17 +122,7 @@ const PrincipalLogistico: React.FC = () => {
         contratosCancelados: cancelados.length,
         totalCreditoDisponible: totalCredito - totalUsado,
         totalCreditoUsado: totalUsado,
-        clientesActivos: clientesUnicos
-      });
-    } else {
-      setStats({
-        totalContratos: 0,
-        contratosVigentes: 0,
-        contratosVencidos: 0,
-        contratosCancelados: 0,
-        totalCreditoDisponible: 0,
-        totalCreditoUsado: 0,
-        clientesActivos: 0
+        clientesActivos: stats.clientesActivos // Mantender valor del servidor
       });
     }
   }, [todosContratos]);

@@ -446,15 +446,71 @@ const agregarRuta = async (contrato_id, datos, usuario_ejecutor, ip) => {
  * @async
  * @function obtenerProxNumeroContrato
  * @description Obtiene el próximo número de contrato a generar
- * Útil para mostrar en el formulario antes de crear el contrato
  * @returns {Promise<Object>} Objeto con el próximo número
- * @example
- * const { numero_contrato } = await obtenerProxNumeroContrato();
- * // Resultado: { numero_contrato: 'CTR-2026-00015' }
  */
 const obtenerProxNumeroContrato = async () => {
   const numeroContrato = await generarNumeroContrato();
   return { numero_contrato: numeroContrato };
+};
+
+/**
+ * Obtiene estadísticas del dashboard logístico
+ * @async
+ * @returns {Promise<Object>} Estadísticas consolidadas
+ */
+const obtenerEstadisticasDashboard = async () => {
+  try {
+    const totalContratosResult = await Contrato.listarTodos();
+    const totalContratos = totalContratosResult.length;
+
+    const vigentes = totalContratosResult.filter(c => c.estado === 'VIGENTE').length;
+    const vencidos = totalContratosResult.filter(c => c.estado === 'VENCIDO').length;
+    const cancelados = totalContratosResult.filter(c => c.estado === 'CANCELADO').length;
+
+    const contratosVigentes = totalContratosResult.filter(c => c.estado === 'VIGENTE');
+    const totalCredito = contratosVigentes.reduce((sum, c) => sum + (c.limite_credito || 0), 0);
+    const totalUsado = contratosVigentes.reduce((sum, c) => sum + (c.saldo_usado || 0), 0);
+    const creditoDisponible = totalCredito - totalUsado;
+
+    const { getConnection } = require('../../config/db');
+    const pool = await getConnection();
+    
+    const resultQuery = await pool.request()
+      .query(`SELECT COUNT(*) as cantidad FROM usuarios WHERE estado = 'ACTIVO' AND tipo_usuario = 'CLIENTE_CORPORATIVO'`);
+    
+    console.log('[Dashboard] Query ejecutada exitosamente');
+    console.log('[Dashboard] Recordset recibido:', resultQuery.recordset);
+    
+    let totalClientesActivos = 0;
+    if (resultQuery.recordset && resultQuery.recordset.length > 0) {
+      totalClientesActivos = resultQuery.recordset[0].cantidad || 0;
+      console.log('[Dashboard] Cantidad de clientes activos extraída:', totalClientesActivos);
+    } else {
+      console.log('[Dashboard] Recordset vacío o sin datos');
+    }
+
+    console.log('[Dashboard] Retornando estadísticas:', {
+      totalContratos,
+      contratosVigentes: vigentes,
+      clientesActivos: totalClientesActivos
+    });
+
+    return {
+      totalContratos,
+      contratosVigentes: vigentes,
+      contratosVencidos: vencidos,
+      contratosCancelados: cancelados,
+      totalCreditoDisponible: creditoDisponible,
+      totalCreditoUsado: totalUsado,
+      clientesActivos: totalClientesActivos
+    };
+  } catch (error) {
+    console.error('[Dashboard ERROR] Error al obtener estadísticas:', error);
+    throw {
+      status: 500,
+      mensaje: 'Error al obtener estadísticas del dashboard'
+    };
+  }
 };
 
 module.exports = {
@@ -467,5 +523,6 @@ module.exports = {
   agregarDescuento,
   agregarRuta,
   generarNumeroContrato,
-  obtenerProxNumeroContrato
+  obtenerProxNumeroContrato,
+  obtenerEstadisticasDashboard
 };
