@@ -212,11 +212,78 @@ const buscarPorNit = async (nit) => {
   return result.recordset[0];
 };
 
+/**
+ * Busca un usuario por su email
+ * @async
+ * @function buscarPorEmail
+ * @param {string} email - Email del usuario
+ * @returns {Promise<Object|undefined>} Usuario encontrado con:
+ *   - {number} id - ID del usuario
+ *   - {string} email - Email registrado
+ *   - {string} nombre - Nombre del usuario
+ *   - {string} tipo_usuario - Tipo de usuario
+ *   - {string} estado - Estado actual
+ *   Retorna undefined si no se encuentra usuario con ese email
+ * @example
+ * const usuario = await buscarPorEmail('user@example.com');
+ * if (usuario) {
+ *   console.log(usuario.nombre);
+ * }
+ */
+const buscarPorEmail = async (email) => {
+  const pool = await getConnection();
+  const result = await pool.request()
+    .input('email', sql.NVarChar, email)
+    .query(`
+      SELECT id, email, nombre, tipo_usuario, estado
+      FROM usuarios
+      WHERE email = @email
+    `);
+  return result.recordset[0];
+};
+
+/**
+ * Crea un nuevo usuario/cliente con estado especificado
+ * @async
+ * @function crearCliente
+ * @param {Object} datos - Datos del usuario a crear
+ * @param {string} datos.nit - NIT único del usuario
+ * @param {string} datos.nombre - Nombre completo
+ * @param {string} datos.email - Email único
+ * @param {string} datos.telefono - Teléfono (opcional)
+ * @param {string} datos.tipo_usuario - Tipo (CLIENTE_CORPORATIVO, PILOTO, etc)
+ * @param {string} datos.estado - Estado inicial (ACTIVO, PENDIENTE_ACEPTACION, etc)
+ * @param {string} datos.password_hash - Contraseña hasheada
+ * @param {number} [datos.creado_por] - ID del usuario que crea (opcional)
+ * @returns {Promise<Object>} Usuario creado
+ */
+const crearCliente = async (datos) => {
+  const pool = await getConnection();
+  const result = await pool.request()
+    .input('nit',           sql.NVarChar, datos.nit)
+    .input('nombre',        sql.NVarChar, datos.nombre)
+    .input('email',         sql.NVarChar, datos.email)
+    .input('telefono',      sql.NVarChar, datos.telefono || null)
+    .input('tipo_usuario',  sql.NVarChar, datos.tipo_usuario)
+    .input('estado',        sql.NVarChar, datos.estado)
+    .input('password_hash', sql.NVarChar, datos.password_hash)
+    .input('creado_por',    sql.Int,      datos.creado_por || null)
+    .query(`
+      INSERT INTO usuarios (nit, nombre, email, telefono, password_hash, tipo_usuario, estado, creado_por)
+      OUTPUT INSERTED.id, INSERTED.nit, INSERTED.nombre, INSERTED.email, INSERTED.telefono,
+             INSERTED.tipo_usuario, INSERTED.estado, INSERTED.fecha_registro
+      VALUES (@nit, @nombre, @email, @telefono, @password_hash, @tipo_usuario, @estado, @creado_por)
+    `);
+  return result.recordset[0];
+};
+
 module.exports = {
   buscarPorId,
   listarUsuarios,
   actualizarUsuario,
   cambiarEstado,
   tieneHistorial,
-  buscarPorNit
+  buscarPorNit,
+  buscarPorEmail,
+  crearCliente
 };

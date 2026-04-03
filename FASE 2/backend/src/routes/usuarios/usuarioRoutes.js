@@ -13,8 +13,26 @@ const {
   modificarUsuario,
   cambiarEstadoUsuario,
   crearRiesgoCliente,
-  obtenerRiesgoCliente
+  obtenerRiesgoCliente,
+  crearCliente
 } = require('../../controllers/usuarios/usuarioController');
+
+/**
+ * POST /api/usuarios
+ * @description Crear nuevo usuario/cliente corporativo
+ * @auth Requerida (token JWT)
+ * @body {
+ *   nombre: string - Nombre del cliente
+ *   email: string - Email único
+ *   nit: string - NIT único
+ *   telefono: string - Teléfono (opcional)
+ *   tipo_usuario: string - Tipo (CLIENTE_CORPORATIVO, PILOTO, etc)
+ *   estado: string - Estado inicial (generalmente PENDIENTE_ACEPTACION)
+ *   password: string - Contraseña en texto plano
+ * }
+ * @response {status: 201, data: usuarioCreado}
+ */
+router.post('/', requireAuth, crearCliente);
 
 /**
  * GET /api/usuarios

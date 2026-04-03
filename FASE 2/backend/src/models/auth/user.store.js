@@ -101,6 +101,10 @@ async function createUser(payload) {
   const nombre = fullName || String(payload.nombres || "Usuario").trim();
   const dbRole = mapAppRoleToDb(payload.role);
 
+  // Clientes corporativos se crean en PENDIENTE_ACEPTACION
+  // Otros roles (piloto, agentes, gerencia) se crean en ACTIVO
+  const estadoInicial = dbRole === 'CLIENTE_CORPORATIVO' ? 'PENDIENTE_ACEPTACION' : 'ACTIVO';
+
   const pool = await getConnection();
 
   const result = await pool
@@ -111,6 +115,7 @@ async function createUser(payload) {
     .input("telefono", sql.NVarChar(20), payload.telefono || null)
     .input("password_hash", sql.NVarChar(255), payload.passwordHash)
     .input("tipo_usuario", sql.NVarChar(30), dbRole)
+    .input("estado", sql.NVarChar(30), estadoInicial)
     .query(`
       INSERT INTO usuarios (
         nit,
@@ -139,7 +144,7 @@ async function createUser(payload) {
         @telefono,
         @password_hash,
         @tipo_usuario,
-        'ACTIVO',
+        @estado,
         NULL
       )
     `);

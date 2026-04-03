@@ -13,12 +13,15 @@
  * @requires models/auditoria/Auditoria - registro de cambios
  */
 
-const Contrato       = require('../../models/contratos/Contrato');
-const ContratoTarifa = require('../../models/contratos/ContratoTarifa');
-const Descuento      = require('../../models/contratos/Descuento');
-const RutaAutorizada = require('../../models/contratos/RutaAutorizada');
-const Usuario        = require('../../models/usuarios/Usuario');
-const Auditoria      = require('../../models/auditoria/Auditoria');
+const Contrato           = require('../../models/contratos/Contrato');
+const ContratoTarifa     = require('../../models/contratos/ContratoTarifa');
+const Descuento          = require('../../models/contratos/Descuento');
+const RutaAutorizada     = require('../../models/contratos/RutaAutorizada');
+const Usuario            = require('../../models/usuarios/Usuario');
+const Auditoria          = require('../../models/auditoria/Auditoria');
+const FacturaFEL         = require('../../models/contratos/FacturaFEL');
+const CuentasPorCobrar   = require('../../models/contratos/CuentasPorCobrar');
+const { notificarBloqueoPorCredito } = require('../../utils/notificaciones');
 
 /**
  * @async
@@ -205,34 +208,110 @@ const modificarContrato = async (id, datos, usuario_ejecutor, ip) => {
 /**
  * @async
  * @function validarCliente
- * @description Valida si un cliente puede realizar transporte
- * Verifica estado, contrato vigente, límite de crédito, ruta autorizada y tarifa aplicable
+ * @description Valida si un cliente puede realizar transporte (FILTRO COMERCIAL COMPLETO)
+ * Verifica:
+ *   1. Estado del cliente (BLOQUEADO/INACTIVO)
+ *   2. Contrato vigente y NO expirado
+ *   3. Facturas certificadas sin pagar
+ *   4. Cuentas por cobrar vencidas
+ *   5. Límite de crédito no excedido
+ *   6. Ruta autorizada en contrato
+ *   7. Tarifa y descuento aplicables
+ * 
+ * BLOQUEO AUTOMÁTICO: Si cliente excede límite de crédito, es bloqueado automáticamente
  * @param {number} cliente_id - ID del cliente a validar
  * @param {string} [origen] - Ciudad/punto de origen del transporte
  * @param {string} [destino] - Ciudad/punto de destino del transporte
  * @param {string} [tipo_unidad] - Tipo de unidad (LIGERA, PESADA, CABEZAL)
  * @returns {Promise<Object>} Objeto con habilitado (boolean), motivo si está deshabilitado, y detalles de cliente/contrato/tarifa si está habilitado
- * @note Si cliente excede límite de crédito, es bloqueado automáticamente
  */
 const validarCliente = async (cliente_id, origen, destino, tipo_unidad) => {
+  // ============================================================
+  // VALIDACIÓN 1: Estado del cliente
+  // ============================================================
   const cliente = await Usuario.buscarPorId(cliente_id);
   if (!cliente) return { habilitado: false, motivo: 'Cliente no encontrado' };
   if (cliente.estado === 'BLOQUEADO') return { habilitado: false, motivo: 'Cliente bloqueado' };
   if (cliente.estado === 'INACTIVO')  return { habilitado: false, motivo: 'Cliente inactivo' };
 
+  // VALIDACIÓN CRÍTICA: Solo CLIENTE_CORPORATIVO puede tener contratos
+  // (CA-04: Solo corporativos tienen contratos y pueden ser validados)
+  if (cliente.tipo_usuario !== 'CLIENTE_CORPORATIVO') {
+    return { habilitado: false, motivo: 'Solo clientes corporativos pueden tener contratos' };
+  }
+
+  // ============================================================
+  // VALIDACIÓN 2: Contrato vigente y no expirado
+  // ============================================================
   const contrato = await Contrato.buscarVigentePorCliente(cliente_id);
   if (!contrato) return { habilitado: false, motivo: 'El cliente no tiene un contrato vigente' };
 
+  // Validar que contrato no esté expirado (fecha_fin < hoy)
+  const fechaFin = new Date(contrato.fecha_fin);
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0); // Normalizar a las 00:00 para comparar solo fechas
+  
+  if (fechaFin < hoy) {
+    // Contrato expiró, cambiar estado
+    await Contrato.cambiarEstado(contrato.id, 'EXPIRADO');
+    return { habilitado: false, motivo: 'El contrato ha expirado' };
+  }
+
+  // ============================================================
+  // VALIDACIÓN 3: Facturas certificadas sin pagar (Bloqueo Automático)
+  // ============================================================
+  const facturasVencidas = await FacturaFEL.traerFacturasCertificadas(cliente_id);
+  if (facturasVencidas && facturasVencidas.length > 0) {
+    return { 
+      habilitado: false, 
+      motivo: `Cliente tiene ${facturasVencidas.length} factura(s) certificada(s) sin pagar`,
+      facturas_pendientes: facturasVencidas
+    };
+  }
+
+  // ============================================================
+  // VALIDACIÓN 4: Cuentas por cobrar vencidas (Bloqueo Automático)
+  // ============================================================
+  const cuentasVencidas = await CuentasPorCobrar.traerCuentasVencidas(cliente_id);
+  if (cuentasVencidas && cuentasVencidas.length > 0) {
+    return { 
+      habilitado: false, 
+      motivo: `Cliente tiene ${cuentasVencidas.length} cuenta(s) por cobrar vencida(s)`,
+      cuentas_vencidas: cuentasVencidas
+    };
+  }
+
+  // ============================================================
+  // VALIDACIÓN 5: Límite de crédito no excedido (Bloqueo Automático)
+  // ============================================================
   if (contrato.saldo_usado >= contrato.limite_credito) {
-    await Usuario.cambiarEstado(cliente_id, 'BLOQUEADO');
+    // Doble validación: Solo CLIENTE_CORPORATIVO puede ser bloqueado (CA-04)
+    if (cliente.tipo_usuario === 'CLIENTE_CORPORATIVO') {
+      await Usuario.cambiarEstado(cliente_id, 'BLOQUEADO');
+      
+      // Enviar notificación de bloqueo automático
+      try {
+        await notificarBloqueoPorCredito(cliente, contrato);
+      } catch (errorCorreo) {
+        // No bloquear la operación si hay error en el correo
+        console.error(`[validarCliente] Error al enviar notificación: ${errorCorreo.message}`);
+      }
+    }
+    
     return { habilitado: false, motivo: 'Límite de crédito excedido. Cliente bloqueado automáticamente' };
   }
 
+  // ============================================================
+  // VALIDACIÓN 6: Ruta autorizada en contrato
+  // ============================================================
   if (origen && destino) {
     const ruta = await RutaAutorizada.verificarRuta(contrato.id, origen, destino);
     if (!ruta) return { habilitado: false, motivo: `La ruta ${origen} → ${destino} no está autorizada en el contrato` };
   }
 
+  // ============================================================
+  // VALIDACIÓN 7: Tarifa y descuento aplicables
+  // ============================================================
   let tarifa   = null;
   let descuento = null;
   if (tipo_unidad) {
@@ -240,12 +319,16 @@ const validarCliente = async (cliente_id, origen, destino, tipo_unidad) => {
     descuento = await Descuento.buscarPorContratoYTipo(contrato.id, tipo_unidad);
   }
 
+  // ============================================================
+  // CLIENTE HABILITADO - Retornar detalles completos
+  // ============================================================
   return {
     habilitado: true,
-    cliente: { id: cliente.id, nombre: cliente.nombre, estado: cliente.estado },
+    cliente: { id: cliente.id, nombre: cliente.nombre, estado: cliente.estado, tipo_usuario: cliente.tipo_usuario },
     contrato: {
       id:               contrato.id,
       numero_contrato:  contrato.numero_contrato,
+      fecha_fin:        contrato.fecha_fin,
       limite_credito:   contrato.limite_credito,
       saldo_usado:      contrato.saldo_usado,
       saldo_disponible: contrato.limite_credito - contrato.saldo_usado,

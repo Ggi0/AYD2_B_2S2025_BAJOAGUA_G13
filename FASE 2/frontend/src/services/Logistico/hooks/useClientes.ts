@@ -23,12 +23,13 @@ export type ClienteDetalle = Cliente & {
 
 interface UseClientesReturn {
   loading: boolean;
-  error: string | null;
+  error:string | null;
   clientes: Cliente[];
   clienteActual: ClienteDetalle | null;
   listarClientes: (filtros?: { tipo_usuario?: string; estado?: string; nombre?: string }) => Promise<Cliente[]>;
   obtenerCliente: (id: number) => Promise<ClienteDetalle | null>;
   modificarCliente: (id: number, datos: Partial<Cliente>) => Promise<ClienteDetalle | null>;
+  crearCliente: (datos: Partial<Cliente>) => Promise<ClienteDetalle | null>;
   cambiarEstadoCliente: (id: number, estado: string, motivo: string) => Promise<any>;
   limpiarError: () => void;
   limpiarClienteActual: () => void;
@@ -41,7 +42,20 @@ export const useClientes = (): UseClientesReturn => {
   const [clienteActual, setClienteActual] = useState<ClienteDetalle | null>(null);
 
   const handleError = (err: unknown) => {
-    const message = err instanceof Error ? err.message : 'Error en la operación';
+    let message = 'Error en la operación';
+    
+    if (err instanceof Error) {
+      message = err.message;
+    } else if (typeof err === 'object' && err !== null) {
+      const errorObj = err as any;
+      if (errorObj.mensaje) {
+        message = errorObj.mensaje;
+        if (errorObj.detalles && Array.isArray(errorObj.detalles)) {
+          message += '\n' + errorObj.detalles.join('\n');
+        }
+      }
+    }
+    
     setError(message);
     return null;
   };
@@ -157,6 +171,34 @@ export const useClientes = (): UseClientesReturn => {
     }
   }, [clienteActual]);
 
+  const crearCliente = useCallback(async (datos: Partial<Cliente>): Promise<ClienteDetalle | null> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await apiService.request<ClienteDetalle>(`/usuarios`, {
+        method: 'POST',
+        body: JSON.stringify(datos),
+      });
+
+      if (!response.ok) {
+        throw new Error(response.mensaje || 'Error al crear cliente');
+      }
+
+      const nuevoCliente = response.data as ClienteDetalle;
+      
+      // Agregar a la lista
+      setClientes(prev => [...prev, nuevoCliente]);
+      
+      return nuevoCliente;
+    } catch (err) {
+      return handleError(err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+
+
   return {
     loading,
     error,
@@ -165,6 +207,7 @@ export const useClientes = (): UseClientesReturn => {
     listarClientes,
     obtenerCliente,
     modificarCliente,
+    crearCliente,
     cambiarEstadoCliente,
     limpiarError,
     limpiarClienteActual,
