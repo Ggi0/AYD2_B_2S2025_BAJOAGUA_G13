@@ -1,61 +1,102 @@
 // src/services/facturacion/facturacion.js
 import apiService from "../api";
 
+/* ── Helpers ────────────────────────────────────────────── */
+// Accede al método privado request de ApiService
+const req = (url, opts) => apiService.request(url, opts);
+
+/* ══════════════════════════════════════════════════════════
+   FACTURAS
+   ══════════════════════════════════════════════════════════ */
+
 /**
- * Obtener todas las facturas (con filtros opcionales)
- * @param {Object} params - { estado, cliente_id, fecha_inicio, fecha_fin, limit }
+ * GET /api/facturacion
+ * Lista facturas con filtros opcionales
  */
 export const getFacturas = async (params = {}) => {
-  const query = new URLSearchParams();
-  if (params.estado) query.append("estado", params.estado);
-  if (params.cliente_id) query.append("cliente_id", params.cliente_id);
-  if (params.fecha_inicio) query.append("fecha_inicio", params.fecha_inicio);
-  if (params.fecha_fin) query.append("fecha_fin", params.fecha_fin);
-  if (params.limit) query.append("limit", params.limit);
+  const q = new URLSearchParams();
 
-  const url = `/facturacion/facturas${query.toString() ? "?" + query.toString() : ""}`;
-  return apiService["request"](url, { method: "GET" });
-}; 
+  if (params.estado) q.append("estado", params.estado);
+  if (params.cliente_id) q.append("cliente_id", String(params.cliente_id));
+  if (params.fecha_desde) q.append("fecha_desde", params.fecha_desde);
+  if (params.fecha_hasta) q.append("fecha_hasta", params.fecha_hasta);
+  if (params.limit) q.append("limit", String(params.limit));
 
-/**
- * Obtener detalle de una factura por ID
- */
-export const getFacturaById = async (id) => {
-  return apiService["request"](`/facturacion/${id}`, { method: "GET" });
-};
-
-/**
- * Obtener borrador de factura a partir de una orden entregada
- */
-export const getBorradorFactura = async (ordenId) => {
-  return apiService["request"](`/facturacion/borrador/${ordenId}`, { method: "GET" });
-};
-
-/**
- * Certificar una factura (simular FEL)
- * Genera UUID de autorización y valida NIT
- */
-export const certificarFactura = async (facturaId) => {
-  return apiService["request"](`/facturacion/${facturaId}/certificar`, {
-    method: "POST",
+  return req(`/facturacion${q.toString() ? "?" + q.toString() : ""}`, {
+    method: "GET",
   });
 };
 
 /**
- * Obtener facturas de un cliente específico
+ * GET /api/facturacion/:id
  */
+export const getFacturaById = async (id) =>
+  req(`/facturacion/${id}`, { method: "GET" });
+
+/**
+ * GET /api/facturacion/orden/:orden_id
+ */
+export const getFacturaPorOrden = async (ordenId) =>
+  req(`/facturacion/orden/${ordenId}`, { method: "GET" });
+
+/**
+ * POST /api/facturacion/borrador/:orden_id
+ */
+export const generarBorrador = async (ordenId) =>
+  req(`/facturacion/borrador/${ordenId}`, { method: "POST" });
+
+/**
+ * POST /api/facturacion/:id/validar
+ */
+export const validarFactura = async (facturaId) =>
+  req(`/facturacion/${facturaId}/validar`, { method: "POST" });
+
+/**
+ * POST /api/facturacion/:id/certificar
+ */
+export const certificarFactura = async (facturaId) =>
+  req(`/facturacion/${facturaId}/certificar`, { method: "POST" });
+
 export const getFacturasByCliente = async (clienteId) => {
   return apiService["request"](`/facturacion/facturas?cliente_id=${clienteId}`, {
     method: "GET",
   });
 };
 
+/* ══════════════════════════════════════════════════════════
+   COBROS
+   ══════════════════════════════════════════════════════════ */
+
 /**
- * Obtener resumen de facturación por sede
- * @param {string} sede - guatemala | xela | puerto_barrios
+ * GET /api/facturacion/cobros
  */
-export const getResumenFacturacionSede = async (sede) => {
-  return apiService["request"](`/facturacion/resumen/sede/${sede}`, {
+export const getCobros = async (params = {}) => {
+  const q = new URLSearchParams();
+
+  if (params.cliente_id) q.append("cliente_id", String(params.cliente_id));
+  if (params.estado_cobro) q.append("estado_cobro", params.estado_cobro);
+  if (params.limit) q.append("limit", String(params.limit));
+
+  return req(`/facturacion/cobros${q.toString() ? "?" + q.toString() : ""}`, {
     method: "GET",
   });
 };
+
+/* ══════════════════════════════════════════════════════════
+   PAGOS
+   ══════════════════════════════════════════════════════════ */
+
+/**
+ * GET /api/facturacion/:id/pagos
+ */
+export const getPagosByFactura = async (facturaId) =>
+  req(`/facturacion/${facturaId}/pagos`, { method: "GET" });
+
+/**
+ * POST /api/facturacion/:id/pagos
+ */
+export const registrarPago = async (facturaId, payload) =>
+  req(`/facturacion/${facturaId}/pagos`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });

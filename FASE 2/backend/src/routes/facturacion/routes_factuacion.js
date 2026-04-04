@@ -56,7 +56,6 @@ const checkRole = (...rolesPermitidos) => (req, res, next) => {
 router.get(
   "/",
   requireAuth,
-  checkRole("AGENTE_FINANCIERO", "AREA_CONTABLE"),
   listarFacturas
 );
 
@@ -82,7 +81,6 @@ router.get(
 router.get(
   "/cobros",
   requireAuth,
-  checkRole("AGENTE_FINANCIERO", "AREA_CONTABLE"),
   listarCobros
 );
 
@@ -105,7 +103,6 @@ router.get(
 router.get(
   "/orden/:orden_id",
   requireAuth,
-  checkRole("AGENTE_FINANCIERO", "AREA_CONTABLE"),
   obtenerPorOrden
 );
 
@@ -158,7 +155,6 @@ router.get(
 router.post(
   "/borrador/:orden_id",
   requireAuth,
-  checkRole("AGENTE_FINANCIERO", "AREA_CONTABLEO"),
   generarBorrador
 );
 
@@ -196,7 +192,6 @@ router.post(
 router.post(
   "/:factura_id/validar",
   requireAuth,
-  checkRole("AGENTE_FINANCIERO", "AREA_CONTABLEO"),
   validarBorrador
 );
 
@@ -248,7 +243,6 @@ router.post(
 router.post(
   "/:factura_id/certificar",
   requireAuth,
-  checkRole("AGENTE_FINANCIERO", "AREA_CONTABLE"),
   certificarFactura
 );
 
@@ -294,7 +288,6 @@ router.post(
 router.post(
   "/:factura_id/pagos",
   requireAuth,
-  checkRole("AGENTE_FINANCIERO", "AREA_CONTABLE"),
   registrarPago
 );
 
@@ -322,7 +315,6 @@ router.post(
 router.get(
   "/:factura_id",
   requireAuth,
-  checkRole("AGENTE_FINANCIERO", "AREA_CONTABLE"),
   obtenerFactura
 );
 
@@ -344,7 +336,6 @@ router.get(
 router.get(
   "/:factura_id/pagos",
   requireAuth,
-  checkRole("AGENTE_FINANCIERO", "AREA_CONTABLE"),
   listarPagos
 );
 

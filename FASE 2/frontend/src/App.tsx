@@ -16,6 +16,8 @@ import ProtectedRoute from './components/auth/ProtectedRoute';
 import FacturacionPage from './pages/finanzas/FacturacionPage';
 import PagosPage from './pages/finanzas/PagosPage';
 import DashboardGerencial from './pages/finanzas/DashboardGerencial';
+import DashboardFinanzas from './pages/finanzas/DashboardFinanzas';
+import CobrosPage from './pages/finanzas/CobrosPage';
 import { AuthProvider } from './context/AuthContext';
 
 // Imports de Piloto
@@ -207,14 +209,17 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/finanzas/dashboard"
-            element={
-              <ProtectedRoute allowedRoles={['finanzas', 'gerencia', 'admin']}>
-                <DashboardGerencial />
-              </ProtectedRoute>
-            }
-          />
+
+        <Route path="/finanzas/dashboard" element={
+          <ProtectedRoute allowedRoles={['finanzas', 'gerencia', 'admin']}>
+            <DashboardFinanzas />
+          </ProtectedRoute>
+        } />
+        <Route path="/finanzas/cobros" element={
+          <ProtectedRoute allowedRoles={['finanzas', 'gerencia', 'admin']}>
+            <CobrosPage />
+          </ProtectedRoute>
+        } />
 
           {/* ── Piloto ── */}
           <Route
