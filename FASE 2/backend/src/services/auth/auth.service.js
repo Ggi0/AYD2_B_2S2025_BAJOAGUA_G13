@@ -1,15 +1,4 @@
-/**
- * @file Servicio de Autenticación
- * @description Lógica de negocio para registro, login y validación de credenciales
- * Incluye validaciones de email, contraseña, roles y envío de notificaciones
- * @module services/auth/auth.service
- * @version 1.0.0
- * @requires bcryptjs - para hash de contraseñas
- * @requires utils/jwt - para generación de tokens JWT
- * @requires models/auth/user.store - para operaciones de usuario
- * @requires utils/mailer - para notificaciones por email
- */
-
+// backend/src/services/auth/auth.service.js
 "use strict";
 
 const bcrypt = require("bcryptjs");
@@ -17,8 +6,8 @@ const { signJwt } = require("../../utils/jwt");
 const userStore = require("../../models/auth/user.store");
 const { notificarInformativo } = require("../../utils/mailer");
 
-// Roles permitidos actualizados para incluir agente_logistico
-const ALLOWED_ROLES = ["cliente", "piloto", "finanzas", "gerencia", "operativo", "agente_logistico"];
+// Roles permitidos actualizados para incluir patio
+const ALLOWED_ROLES = ["cliente", "piloto", "finanzas", "gerencia", "operativo", "agente_logistico", "patio"];
 
 function createHttpError(message, statusCode) {
   const error = new Error(message);
@@ -41,33 +30,6 @@ function getDisplayName(user) {
   return user.email;
 }
 
-/**
- * @async
- * @function register
- * @description Registra un nuevo usuario en el sistema con validaciones completas
- * Valida email, contraseña, NIT y rol. Enva notificación de bienvenida
- * @param {Object} payload - Datos de registro del usuario
- * @param {string} payload.nit - Número de Identificación Tributaria (max 13 caracteres)
- * @param {string} payload.email - Email único del usuario (debe ser válido)
- * @param {string} payload.password - Contraseña (mínimo 8 caracteres)
- * @param {string} payload.confirmPassword - Confirmación de contraseña (debe coincidir con password)
- * @param {string} [payload.role="cliente"] - Rol del usuario (cliente, piloto, finanzas, gerencia, operativo, agente_logistico)
- * @param {string} [payload.nombres=""] - Nombres del usuario
- * @param {string} [payload.apellidos=""] - Apellidos del usuario
- * @param {string} [payload.telefono=""] - Número de contacto del usuario
- * @returns {Promise<Object>} Datos del usuario registrado con mensaje de éxito
- * @throws {Error} Si hay validación fallida (email duplicado, email inválido, password débil, rol no permitido)
- * @example
- * const resultado = await register({
- *   nit: '1234567890',
- *   email: 'usuario@example.com',
- *   password: 'SecurePass123!',
- *   confirmPassword: 'SecurePass123!',
- *   role: 'cliente',
- *   nombres: 'Juan',
- *   apellidos: 'Pérez'
- * });
- */
 async function register(payload) {
   const {
     nit,
@@ -137,7 +99,6 @@ async function register(payload) {
       }
     );
   } catch (error) {
-    // No bloquear el registro si el envío de correo falla.
     console.error("[auth] Registro completado, pero falló la notificación por correo:", error.message);
   }
 
@@ -155,29 +116,11 @@ async function register(payload) {
   };
 }
 
-/**
- * @async
- * @function login
- * @description Autentica a un usuario y retorna un token JWT
- * Valida credenciales, verifica estado del usuario (ACTIVO) y genera token de sesión
- * @param {Object} payload - Credenciales de login
- * @param {string} payload.email - Email del usuario registrado
- * @param {string} payload.password - Contraseña en texto plano (será comparada con hash)
- * @returns {Promise<Object>} Token JWT y datos del usuario autenticado
- * @throws {Error} Si credenciales son inválidas (401), usuario no activo (403), o email inválido (400)
- * @example
- * const resultado = await login({
- *   email: 'usuario@example.com',
- *   password: 'SecurePass123!'
- * });
- * // Returns: { mensaje, data: { token: 'JWT_TOKEN', user: {...} } }
- */
 async function login(payload) {
   const { email, password } = payload;
 
   console.log('[LOGIN] === INICIO DE PROCESO DE LOGIN ===');
   console.log('[LOGIN] Email recibido:', email);
-  console.log('[LOGIN] Password recibida:', password ? '***' : 'No recibida');
 
   if (!email || !password) {
     console.log('[LOGIN] Error: Email o password faltante');
@@ -204,9 +147,7 @@ async function login(payload) {
   console.log('[LOGIN] - Estado:', user.estado);
   console.log('[LOGIN] - Nombres:', user.nombres);
   console.log('[LOGIN] - Apellidos:', user.apellidos);
-  console.log('[LOGIN] - Password Hash (primeros 20 chars):', user.passwordHash ? user.passwordHash.substring(0, 20) + '...' : 'No hay hash');
 
-  // Verificar estado del usuario
   const userEstado = String(user.estado || "").toUpperCase();
   console.log('[LOGIN] Estado del usuario normalizado:', userEstado);
   
@@ -225,7 +166,6 @@ async function login(payload) {
     throw createHttpError("Credenciales invalidas", 401);
   }
 
-  // Normalizar el rol a minúsculas para consistencia en el frontend
   const normalizedRole = user.role.toLowerCase();
   console.log('[LOGIN] Rol normalizado (para JWT):', normalizedRole);
 

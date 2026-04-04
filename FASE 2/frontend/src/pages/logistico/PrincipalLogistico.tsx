@@ -5,22 +5,20 @@ import {
   FaClipboardList, 
   FaCheckCircle, 
   FaExclamationTriangle,
-  FaMapMarkerAlt,
   FaUser,
   FaFileContract,
   FaChartLine,
   FaSync,
   FaEye,
-  FaSearch,
-  FaCalculator
+  FaSearch
 } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import LogisticHeader from '../../components/logistico/LogisticHeader';
 import LogisticMenu from '../../components/logistico/LogisticMenu';
-import ValidacionClienteModal from '../../components/logistico/ValidacionClienteModal';
 import { useAuth } from '../../context/AuthContext';
 import { useContratos } from '../../services/Logistico/hooks/useContratos';
 import { formatMoney, formatDate, getContratoEstadoInfo } from '../../services/Logistico/Logistico';
+import { API_BASE_URL } from '../../services/api';
 
 
 interface DashboardStats {
@@ -39,7 +37,6 @@ const PrincipalLogistico: React.FC = () => {
   const { todosContratos, listarTodosContratos, loading, error, limpiarError } = useContratos();
   const [searchTerm, setSearchTerm] = useState('');
   const [estadoFiltro, setEstadoFiltro] = useState<string>('todos');
-  const [showValidacionModal, setShowValidacionModal] = useState(false);
   const [stats, setStats] = useState<DashboardStats>({
     totalContratos: 0,
     contratosVigentes: 0,
@@ -54,16 +51,57 @@ const PrincipalLogistico: React.FC = () => {
     ? `${user.nombres} ${user.apellidos}`
     : user?.email?.split('@')[0] || 'Operador Logístico';
 
-  // Cargar contratos al montar el componente
+  // Cargar contratos y estadísticas al montar el componente
   useEffect(() => {
     cargarContratos();
   }, []);
 
   const cargarContratos = async () => {
     await listarTodosContratos();
+    await cargarEstadisticas();
   };
 
-  // Calcular estadísticas cuando cambian los contratos
+  // Cargar estadísticas desde el servidor
+  const cargarEstadisticas = async () => {
+    try {
+      const token = localStorage.getItem('authToken');
+      console.log('[Frontend] Token disponible:', !!token);
+      
+      if (!token) {
+        console.warn('[Frontend] No token available for fetching statistics');
+        return;
+      }
+
+      const url = `${API_BASE_URL}/contratos/estadisticas/dashboard`;
+      console.log('[Frontend] Llamando a:', url);
+
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      console.log('[Frontend] Respuesta recibida, status:', response.status);
+      
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[Frontend] Datos recibidos:', data);
+        
+        if (data.ok) {
+          console.log('[Frontend] Estableciendo stats:', data.data);
+          setStats(data.data);
+        }
+      } else {
+        const errorText = await response.text();
+        console.error('[Frontend] Error en respuesta:', response.status, errorText);
+      }
+    } catch (error) {
+      console.error('[Frontend] Error al cargar estadísticas:', error);
+    }
+  };
+
+  // Calcular estadísticas cuando cambian los contratos (respaldo)
   useEffect(() => {
     if (todosContratos.length > 0) {
       const vigentes = todosContratos.filter(c => c.estado === 'VIGENTE');
@@ -72,7 +110,6 @@ const PrincipalLogistico: React.FC = () => {
       
       const totalCredito = vigentes.reduce((sum, c) => sum + (c.limite_credito || 0), 0);
       const totalUsado = vigentes.reduce((sum, c) => sum + (c.saldo_usado || 0), 0);
-      const clientesUnicos = new Set(todosContratos.map(c => c.cliente_id)).size;
 
       setStats({
         totalContratos: todosContratos.length,
@@ -81,17 +118,7 @@ const PrincipalLogistico: React.FC = () => {
         contratosCancelados: cancelados.length,
         totalCreditoDisponible: totalCredito - totalUsado,
         totalCreditoUsado: totalUsado,
-        clientesActivos: clientesUnicos
-      });
-    } else {
-      setStats({
-        totalContratos: 0,
-        contratosVigentes: 0,
-        contratosVencidos: 0,
-        contratosCancelados: 0,
-        totalCreditoDisponible: 0,
-        totalCreditoUsado: 0,
-        clientesActivos: 0
+        clientesActivos: stats.clientesActivos // Mantender valor del servidor
       });
     }
   }, [todosContratos]);
@@ -249,7 +276,7 @@ const PrincipalLogistico: React.FC = () => {
             </div>
 
             {/* Acciones rápidas */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-10">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-10 max-w-2xl mx-auto">
               <button 
                 onClick={() => navigate('/logistico/contratos/nuevo')}
                 className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-5 hover:shadow-md transition-all text-left group"
@@ -279,33 +306,7 @@ const PrincipalLogistico: React.FC = () => {
                   </div>
                 </div>
               </button>
-              
-              <button 
-                onClick={() => setShowValidacionModal(true)}
-                className="bg-gradient-to-br from-teal-500 to-teal-600 rounded-xl p-5 hover:shadow-md transition-all text-left group"
-              >
-                <div className="flex items-start space-x-4">
-                  <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center group-hover:bg-white/30 transition-colors flex-shrink-0">
-                    <FaCalculator className="w-5 h-5 text-white" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="font-semibold text-white text-sm">Validar Cliente</h3>
-                    <p className="text-xs text-teal-100">Verificar servicio</p>
-                  </div>
-                </div>
-              </button>
-              
-              <button className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-5 hover:shadow-md transition-all text-left group opacity-60 cursor-not-allowed">
-                <div className="flex items-start space-x-4">
-                  <div className="w-10 h-10 bg-white/20 rounded-lg flex items-center justify-center group-hover:bg-white/30 transition-colors flex-shrink-0">
-                    <FaMapMarkerAlt className="w-5 h-5 text-white" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="font-semibold text-white text-sm">Rutas Activas</h3>
-                    <p className="text-xs text-purple-100">Próximamente</p>
-                  </div>
-                </div>
-              </button>
+
             </div>
 
             {/* Búsqueda y filtros */}
@@ -503,11 +504,6 @@ const PrincipalLogistico: React.FC = () => {
         )}
       </div>
 
-      {/* Modal de validación de cliente */}
-      <ValidacionClienteModal 
-        isOpen={showValidacionModal}
-        onClose={() => setShowValidacionModal(false)}
-      />
     </div>
   );
 };

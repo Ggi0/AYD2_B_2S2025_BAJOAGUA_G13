@@ -115,6 +115,19 @@ async function getPilotos(req, res) {
   }
 }
 
+async function getRutasAutorizadas(req, res) {
+  try {
+    const { id } = req.params;
+    const result = await ordenService.getRutasAutorizadas(id, req.body || {});
+    return res.status(200).json({ ok: true, ...result });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      ok: false,
+      mensaje: error.message || "No se pudo obtener el listado de ordenes",
+    });
+  }
+}
+
 async function registrarSalidaPatio(req, res) {
   try {
     const { id } = req.params;
@@ -184,5 +197,6 @@ module.exports = {
   getOrdenPlanificada,
   getOrdenPlanificada,
   getOrdenPiloto,
+  getRutasAutorizadas,
   optenerOrdenUsuario,
 };

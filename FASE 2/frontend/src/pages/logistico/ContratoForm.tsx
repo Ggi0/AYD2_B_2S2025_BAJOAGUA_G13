@@ -1,7 +1,7 @@
 // src/pages/logistico/ContratoForm.tsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { FaSave, FaTimes, FaPlus, FaTrash } from 'react-icons/fa';
+import { FaSave, FaTimes, FaPlus, FaTrash, FaEdit, FaTruck, FaDollarSign, FaMap, FaGift, FaInfoCircle, FaLightbulb, FaCheckCircle, FaRocket } from 'react-icons/fa';
 import { useContratos } from '../../services/Logistico/hooks/useContratos';
 import { getTipoUnidadLabel, formatMoney } from '../../services/Logistico/Logistico';
 import LogisticHeader from '../../components/logistico/LogisticHeader';
@@ -26,6 +26,13 @@ interface RutaForm {
 
 interface TarifaFormConId extends TarifaForm {
   id?: number; // Para distinguir tarifas existentes
+}
+
+interface DescuentoForm {
+  tipo_unidad: string;
+  porcentaje_descuento: number;
+  observacion: string;
+  id?: number; // Para distinguir descuentos existentes
 }
 
 // Rutas comunes predefinidas
@@ -72,7 +79,8 @@ const ContratoForm: React.FC = () => {
     limite_credito:  0,
     plazo_pago:      30,
     tarifas:         [] as TarifaFormConId[],
-    rutas:           [] as RutaForm[]
+    rutas:           [] as RutaForm[],
+    descuentos:      [] as DescuentoForm[]
   });
 
   const [nuevaTarifa, setNuevaTarifa] = useState<TarifaForm>({
@@ -81,6 +89,10 @@ const ContratoForm: React.FC = () => {
 
   const [nuevaRuta, setNuevaRuta] = useState<RutaForm>({
     origen: '', destino: '', distancia_km: 0, tipo_carga: ''
+  });
+
+  const [nuevoDescuento, setNuevoDescuento] = useState<DescuentoForm>({
+    tipo_unidad: '', porcentaje_descuento: 0, observacion: ''
   });
 
   const [tipoRuta, setTipoRuta] = useState<'comun' | 'personalizada'>('comun');
@@ -159,6 +171,12 @@ const ContratoForm: React.FC = () => {
           distancia_km: r.distancia_km || 0,
           tipo_carga:   r.tipo_carga || '',
           id:           r.id // Marcar como existente
+        })) || [],
+        descuentos: contrato.descuentos?.map((d: any) => ({
+          tipo_unidad:          d.tipo_unidad,
+          porcentaje_descuento: d.porcentaje_descuento,
+          observacion:          d.observacion || '',
+          id:                   d.id // Marcar como existente
         })) || []
       });
     }
@@ -236,6 +254,24 @@ const ContratoForm: React.FC = () => {
     setFormData(prev => ({ ...prev, rutas: prev.rutas.filter((_, i) => i !== index) }));
   };
 
+  const agregarDescuento = () => {
+    if (nuevoDescuento.tipo_unidad && nuevoDescuento.porcentaje_descuento > 0 && nuevoDescuento.porcentaje_descuento <= 100) {
+      const existe = formData.descuentos.some(d => d.tipo_unidad === nuevoDescuento.tipo_unidad);
+      if (existe) {
+        alert(`Ya existe un descuento para ${getTipoUnidadLabel(nuevoDescuento.tipo_unidad)}`);
+        return;
+      }
+      setFormData(prev => ({ ...prev, descuentos: [...prev.descuentos, { ...nuevoDescuento }] }));
+      setNuevoDescuento({ tipo_unidad: '', porcentaje_descuento: 0, observacion: '' });
+    } else {
+      alert('Seleccione tipo de unidad y porcentaje válido (0-100%)');
+    }
+  };
+
+  const eliminarDescuento = (index: number) => {
+    setFormData(prev => ({ ...prev, descuentos: prev.descuentos.filter((_, i) => i !== index) }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -273,6 +309,16 @@ const ContratoForm: React.FC = () => {
           });
         }
 
+        // Agregar nuevos descuentos (los que no tienen id)
+        const descuentosNuevos = formData.descuentos.filter(d => !d.id);
+        for (const descuento of descuentosNuevos) {
+          await ContratoService.agregarDescuento(parseInt(id), {
+            tipo_unidad:          descuento.tipo_unidad,
+            porcentaje_descuento: descuento.porcentaje_descuento,
+            observacion:          descuento.observacion || undefined
+          });
+        }
+
         // Mostrar mensaje de éxito
         setSuccess(' Contrato actualizado exitosamente');
         setTimeout(() => {
@@ -296,6 +342,11 @@ const ContratoForm: React.FC = () => {
             destino:      r.destino,
             distancia_km: r.distancia_km || undefined,
             tipo_carga:   r.tipo_carga   || undefined
+          })),
+          descuentos: formData.descuentos.map(d => ({
+            tipo_unidad:          d.tipo_unidad,
+            porcentaje_descuento: d.porcentaje_descuento,
+            observacion:          d.observacion || undefined
           }))
         };
         const result = await crearContrato(payload);
@@ -314,7 +365,7 @@ const ContratoForm: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
       <LogisticHeader
         userName={userName}
         userRole={isEdit ? 'Editar Contrato' : 'Nuevo Contrato'}
@@ -322,38 +373,57 @@ const ContratoForm: React.FC = () => {
       <LogisticMenu />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">
-            {isEdit ? 'Editar Contrato' : 'Nuevo Contrato'}
-          </h1>
-          <p className="text-gray-600 mt-1">
-            {isEdit ? 'Modificar información del contrato' : 'Registrar un nuevo contrato de transporte'}
-          </p>
+        {/* Header Mejorado */}
+        <div className="mb-10 bg-gradient-to-r from-orange-600 to-orange-700 rounded-2xl shadow-lg p-8 text-white">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <div className="text-5xl opacity-30">
+                {isEdit ? <FaEdit /> : <FaTruck />}
+              </div>
+              <div>
+                <h1 className="text-4xl font-bold mb-2">
+                  {isEdit ? 'Editar Contrato' : 'Nuevo Contrato'}
+                </h1>
+                <p className="text-orange-100 text-lg">
+                  {isEdit ? 'Modifica los detalles del contrato de transporte' : 'Registra un nuevo contrato con tarifas, rutas y descuentos'}
+                </p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {error && (
-          <div className="mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg flex justify-between items-center">
-            <span>{error}</span>
-            <button onClick={limpiarError} className="text-red-700 hover:text-red-900">×</button>
+          <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 rounded-lg shadow-md flex justify-between items-center animate-pulse">
+            <div className="flex items-center">
+              <FaTimes className="text-2xl mr-3" />
+              <span className="font-medium">{error}</span>
+            </div>
+            <button onClick={limpiarError} className="text-red-500 hover:text-red-700 font-bold transition-colors"><FaTimes className="h-5 w-5" /></button>
           </div>
         )}
 
         {success && (
-          <div className="mb-6 p-4 bg-green-100 border border-green-400 text-green-700 rounded-lg flex justify-between items-center animate-pulse">
-            <span>{success}</span>
-            <button onClick={() => setSuccess(null)} className="text-green-700 hover:text-green-900">×</button>
+          <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-500 text-green-700 rounded-lg shadow-md flex justify-between items-center animate-pulse">
+            <div className="flex items-center">
+              <FaCheckCircle className="text-2xl mr-3" />
+              <span className="font-medium">{success}</span>
+            </div>
+            <button onClick={() => setSuccess(null)} className="text-green-500 hover:text-green-700 font-bold transition-colors"><FaTimes className="h-5 w-5" /></button>
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-8">
 
           {/* Datos Principales */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Datos del Contrato</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="bg-white rounded-2xl shadow-lg border border-orange-100 p-8 hover:shadow-xl transition-shadow">
+            <div className="flex items-center mb-6 pb-4 border-b-2 border-orange-100">
+              <FaEdit className="text-3xl mr-3 text-orange-600" />
+              <h2 className="text-2xl font-bold text-gray-900">Datos del Contrato</h2>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Número de Contrato *</label>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Número de Contrato *</label>
                 <input
                   type="text"
                   name="numero_contrato"
@@ -361,16 +431,16 @@ const ContratoForm: React.FC = () => {
                   onChange={handleChange}
                   required
                   disabled={true}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600 cursor-not-allowed"
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg bg-gray-50 text-gray-600 cursor-not-allowed transition-colors"
                   placeholder="Se genera automáticamente"
                 />
-                <p className="text-xs text-gray-500 mt-1">Se genera automáticamente</p>
+                <p className="text-xs text-gray-500 mt-1 flex items-center"><FaCheckCircle className="mr-2" /> Se genera automáticamente</p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Cliente *</label>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Cliente *</label>
                 {loadingClientes ? (
-                  <div className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-400">
+                  <div className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg bg-gray-50 text-gray-400">
                     Cargando clientes...
                   </div>
                 ) : (
@@ -380,7 +450,7 @@ const ContratoForm: React.FC = () => {
                     onChange={handleChange}
                     required
                     disabled={isEdit}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-orange-500 focus:border-orange-500 bg-white disabled:bg-gray-100"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-600 focus:border-orange-600 bg-white disabled:bg-gray-100 transition-all hover:border-orange-300"
                   >
                     <option value={0}>Seleccione un cliente...</option>
                     {clientes.map((cliente) => (
@@ -393,38 +463,38 @@ const ContratoForm: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Inicio *</label>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Fecha de Inicio *</label>
                 <input
                   type="date" name="fecha_inicio" value={formData.fecha_inicio}
                   onChange={handleChange} required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-orange-500 focus:border-orange-500"
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-600 focus:border-orange-600 transition-all hover:border-orange-300"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de Fin *</label>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Fecha de Fin *</label>
                 <input
                   type="date" name="fecha_fin" value={formData.fecha_fin}
                   onChange={handleChange} required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-orange-500 focus:border-orange-500"
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-600 focus:border-orange-600 transition-all hover:border-orange-300"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Límite de Crédito (GTQ) *</label>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Límite de Crédito (GTQ) *</label>
                 <input
                   type="number" name="limite_credito" value={formData.limite_credito}
                   onChange={handleChange} required step="0.01"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-orange-500 focus:border-orange-500"
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-600 focus:border-orange-600 transition-all hover:border-orange-300"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Plazo de Pago *</label>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Plazo de Pago *</label>
                 <select
                   name="plazo_pago" value={formData.plazo_pago}
                   onChange={handleChange} required
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-orange-500 focus:border-orange-500 bg-white"
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-600 focus:border-orange-600 bg-white transition-all hover:border-orange-300"
                 >
                   <option value={15}>15 días</option>
                   <option value={30}>30 días</option>
@@ -436,19 +506,23 @@ const ContratoForm: React.FC = () => {
           </div>
 
           {/* Tarifas Negociadas */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Tarifas Negociadas</h2>
+          <div className="bg-white rounded-2xl shadow-lg border border-blue-100 p-8 hover:shadow-xl transition-shadow">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b-2 border-blue-100">
+              <div className="flex items-center">
+                <FaDollarSign className="text-3xl mr-3 text-blue-600" />
+                <h2 className="text-2xl font-bold text-gray-900">Tarifas Negociadas</h2>
+              </div>
               {isEdit && formData.tarifas.length > 0 && (
-                <p className="text-xs text-blue-600">
+                <span className="px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm font-semibold">
                   {formData.tarifas.filter(t => t.id).length} existentes
-                </p>
+                </span>
               )}
             </div>
 
             {isEdit && (
-              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
-                Las tarifas negociadas no pueden ser modificadas al editar un contrato existente. Solo se pueden agregar rutas autorizadas.
+              <div className="mb-6 p-4 bg-blue-50 border-l-4 border-blue-500 rounded-lg text-blue-700 flex items-center">
+                <FaInfoCircle className="text-2xl mr-3" />
+                <span>Las tarifas negociadas no pueden ser modificadas. Solo se pueden agregar rutas autorizadas.</span>
               </div>
             )}
 
@@ -473,12 +547,12 @@ const ContratoForm: React.FC = () => {
             )}
 
             {!isEdit && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Unidad *</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">Tipo de Unidad *</label>
                   <select
                     value={nuevaTarifa.tarifario_id} onChange={handleTarifarioChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-blue-600 transition-all hover:border-blue-300"
                     disabled={loadingTarifarios}
                   >
                     <option value="">Seleccionar</option>
@@ -490,19 +564,19 @@ const ContratoForm: React.FC = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Costo negociado por km (GTQ) *</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">Costo negociado por km (GTQ) *</label>
                   <input
-                    type="number" value={nuevaTarifa.costo_km_negociado}
-                    onChange={(e) => setNuevaTarifa({ ...nuevaTarifa, costo_km_negociado: parseFloat(e.target.value) })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    type="number" value={isNaN(nuevaTarifa.costo_km_negociado) ? '' : nuevaTarifa.costo_km_negociado}
+                    onChange={(e) => setNuevaTarifa({ ...nuevaTarifa, costo_km_negociado: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-blue-600 transition-all hover:border-blue-300"
                     step="0.01" placeholder="Ej: 7.50"
                   />
                 </div>
                 <div className="flex items-end">
                   <button type="button" onClick={agregarTarifa}
-                    className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center"
+                    className="w-full px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-md hover:shadow-lg flex items-center justify-center font-semibold"
                   >
-                    <FaPlus className="h-4 w-4 mr-2" />
+                    <FaPlus className="h-5 w-5 mr-2" />
                     Agregar Tarifa
                   </button>
                 </div>
@@ -511,19 +585,24 @@ const ContratoForm: React.FC = () => {
           </div>
 
           {/* Rutas Autorizadas */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold text-gray-900">Rutas Autorizadas (Opcional)</h2>
+          <div className="bg-white rounded-2xl shadow-lg border border-purple-100 p-8 hover:shadow-xl transition-shadow">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b-2 border-purple-100">
+              <div className="flex items-center">
+                <FaMap className="text-3xl mr-3 text-purple-600" />
+                <h2 className="text-2xl font-bold text-gray-900">Rutas Autorizadas</h2>
+                <span className="ml-3 px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-semibold">Opcional</span>
+              </div>
               {isEdit && formData.rutas.length > 0 && (
-                <p className="text-xs text-blue-600">
-                  {formData.rutas.filter(r => r.id).length} existentes, {formData.rutas.filter(r => !r.id).length} nuevas
-                </p>
+                <span className="px-4 py-2 bg-purple-100 text-purple-700 rounded-full text-sm font-semibold">
+                  {formData.rutas.filter(r => r.id).length} existentes • {formData.rutas.filter(r => !r.id).length} nuevas
+                </span>
               )}
             </div>
 
             {isEdit && (
-              <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
-                 Puedes agregar nuevas rutas autorizadas a este contrato.
+              <div className="mb-6 p-4 bg-purple-50 border-l-4 border-purple-500 rounded-lg text-purple-700 flex items-center">
+                <FaRocket className="text-2xl mr-3" />
+                <span>Puedes agregar nuevas rutas autorizadas a este contrato.</span>
               </div>
             )}
 
@@ -574,12 +653,12 @@ const ContratoForm: React.FC = () => {
 
             {tipoRuta === 'comun' ? (
               // Seleccionar ruta común
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Selecciona una ruta</label>
+              <div className="mb-6">
+                <label className="block text-sm font-bold text-gray-700 mb-2">Selecciona una ruta</label>
                 <select
                   value={rutaSeleccionada}
                   onChange={(e) => setRutaSeleccionada(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-purple-600 transition-all hover:border-purple-300"
                 >
                   <option value="">- Seleccionar una ruta -</option>
                   {RUTAS_COMUNES.map((ruta, idx) => (
@@ -591,48 +670,48 @@ const ContratoForm: React.FC = () => {
               </div>
             ) : (
               // Ingresar ruta personalizada
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Origen *</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">Origen *</label>
                   <input
                     type="text"
                     value={nuevaRuta.origen}
                     onChange={(e) => setNuevaRuta({ ...nuevaRuta, origen: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-purple-600 transition-all hover:border-purple-300"
                     placeholder="ej: Escuintla"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Destino *</label>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">Destino *</label>
                   <input
                     type="text"
                     value={nuevaRuta.destino}
                     onChange={(e) => setNuevaRuta({ ...nuevaRuta, destino: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-purple-600 transition-all hover:border-purple-300"
                     placeholder="ej: Cobán"
                   />
                 </div>
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Distancia (km)</label>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Distancia (km)</label>
                 <input
                   type="number"
-                  value={nuevaRuta.distancia_km}
-                  onChange={(e) => setNuevaRuta({ ...nuevaRuta, distancia_km: parseFloat(e.target.value) })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  value={isNaN(nuevaRuta.distancia_km) ? '' : nuevaRuta.distancia_km}
+                  onChange={(e) => setNuevaRuta({ ...nuevaRuta, distancia_km: parseFloat(e.target.value) || 0 })}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-purple-600 transition-all hover:border-purple-300"
                   step="0.01"
                   placeholder="0.00"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Carga</label>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Tipo de Carga</label>
                 <select
                   value={nuevaRuta.tipo_carga}
                   onChange={(e) => setNuevaRuta({ ...nuevaRuta, tipo_carga: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-purple-600 transition-all hover:border-purple-300"
                 >
                   <option value="">- Seleccionar -</option>
                   {TIPOS_CARGA.map((tipo) => (
@@ -642,27 +721,116 @@ const ContratoForm: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex justify-end">
+            <div className="flex justify-end mt-6">
               <button type="button" onClick={agregarRuta}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center"
+                className="px-6 py-3 bg-gradient-to-r from-purple-600 to-purple-700 text-white rounded-lg hover:from-purple-700 hover:to-purple-800 transition-all shadow-md hover:shadow-lg flex items-center font-semibold"
               >
-                <FaPlus className="h-4 w-4 mr-2" />
+                <FaPlus className="h-5 w-5 mr-2" />
                 Agregar Ruta
               </button>
             </div>
           </div>
 
-          <div className="flex justify-end space-x-4">
+          {/* Descuentos */}
+          <div className="bg-white rounded-2xl shadow-lg border border-green-100 p-8 hover:shadow-xl transition-shadow">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b-2 border-green-100">
+              <div className="flex items-center">
+                <FaGift className="text-3xl mr-3 text-green-600" />
+                <h2 className="text-2xl font-bold text-gray-900">Descuentos Especiales</h2>
+                <span className="ml-3 px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-semibold">Opcional</span>
+              </div>
+              {isEdit && formData.descuentos.length > 0 && (
+                <span className="px-4 py-2 bg-green-100 text-green-700 rounded-full text-sm font-semibold">
+                  {formData.descuentos.filter(d => d.id).length} existentes • {formData.descuentos.filter(d => !d.id).length} nuevos
+                </span>
+              )}
+            </div>
+
+            <div className="mb-6 p-4 bg-green-50 border-l-4 border-green-500 rounded-lg text-green-700 flex items-center">
+              <FaLightbulb className="text-2xl mr-3" />
+              <span>Los descuentos se aplican por tipo de unidad (LIGERA, PESADA, CABEZAL). Úsalos para ofrecer tarifas especiales.</span>
+            </div>
+
+            {formData.descuentos.length > 0 && (
+              <div className="mb-4 space-y-2">
+                {formData.descuentos.map((descuento, index) => (
+                  <div key={index} className="flex items-center justify-between bg-gray-50 p-3 rounded-lg border-l-4 border-green-500">
+                    <div>
+                      <span className="font-medium">{getTipoUnidadLabel(descuento.tipo_unidad)}</span>
+                      <span className="text-gray-500 ml-2">{descuento.porcentaje_descuento}%</span>
+                      {descuento.observacion && <span className="text-gray-400 ml-2">- {descuento.observacion}</span>}
+                      {descuento.id && <span className="text-xs text-green-600 ml-2">(Existente)</span>}
+                      {!descuento.id && <span className="text-xs text-blue-600 ml-2">(Nuevo)</span>}
+                    </div>
+                    <button type="button" onClick={() => eliminarDescuento(index)} className="text-red-500 hover:text-red-700">
+                      <FaTrash className="h-4 w-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Tipo Unidad</label>
+                <select
+                  value={nuevoDescuento.tipo_unidad}
+                  onChange={(e) => setNuevoDescuento({ ...nuevoDescuento, tipo_unidad: e.target.value })}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-600 focus:border-green-600 transition-all hover:border-green-300"
+                >
+                  <option value="">Seleccionar</option>
+                  <option value="LIGERA">Ligera</option>
+                  <option value="PESADA">Pesada</option>
+                  <option value="CABEZAL">Cabezal</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Porcentaje Descuento (%)</label>
+                <input
+                  type="number"
+                  value={isNaN(nuevoDescuento.porcentaje_descuento) ? '' : nuevoDescuento.porcentaje_descuento}
+                  onChange={(e) => setNuevoDescuento({ ...nuevoDescuento, porcentaje_descuento: parseFloat(e.target.value) || 0 })}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-600 focus:border-green-600 transition-all hover:border-green-300"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  placeholder="Ej: 5.00"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">Observación</label>
+                <input
+                  type="text"
+                  value={nuevoDescuento.observacion}
+                  onChange={(e) => setNuevoDescuento({ ...nuevoDescuento, observacion: e.target.value })}
+                  className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-600 focus:border-green-600 transition-all hover:border-green-300"
+                  placeholder="Motivo del descuento"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button type="button" onClick={agregarDescuento}
+                className="px-6 py-3 bg-gradient-to-r from-green-600 to-green-700 text-white rounded-lg hover:from-green-700 hover:to-green-800 transition-all shadow-md hover:shadow-lg flex items-center font-semibold"
+              >
+                <FaPlus className="h-5 w-5 mr-2" />
+                Agregar Descuento
+              </button>
+            </div>
+          </div>
+
+          {/* Botones de Acción */}
+          <div className="flex justify-between items-center pt-8 border-t-2 border-gray-200">
             <button type="button" onClick={() => navigate('/logistico/contratos')}
-              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center"
+              className="px-8 py-3 border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-all flex items-center font-semibold text-lg"
             >
-              <FaTimes className="h-4 w-4 mr-2" />
+              <FaTimes className="h-5 w-5 mr-2" />
               Cancelar
             </button>
             <button type="submit" disabled={loading || loadingSubmit}
-              className="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center disabled:opacity-50"
+              className="px-8 py-3 bg-gradient-to-r from-orange-600 to-orange-700 text-white rounded-lg hover:from-orange-700 hover:to-orange-800 transition-all shadow-lg hover:shadow-xl flex items-center disabled:opacity-50 disabled:cursor-not-allowed font-semibold text-lg"
             >
-              <FaSave className="h-4 w-4 mr-2" />
+              <FaSave className="h-5 w-5 mr-2" />
               {loading || loadingSubmit ? 'Guardando...' : (isEdit ? 'Actualizar' : 'Crear')}
             </button>
           </div>

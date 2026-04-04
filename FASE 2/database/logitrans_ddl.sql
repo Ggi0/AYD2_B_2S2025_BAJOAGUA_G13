@@ -6,7 +6,7 @@ CREATE TABLE usuarios (
     telefono NVARCHAR(20) NULL,
     password_hash NVARCHAR(255) NOT NULL,
     tipo_usuario NVARCHAR(30) NOT NULL CHECK (tipo_usuario IN ('CLIENTE_CORPORATIVO','AGENTE_OPERATIVO','AGENTE_LOGISTICO','AGENTE_FINANCIERO','ENCARGADO_PATIO','AREA_CONTABLE','GERENCIA','PILOTO')),
-    estado NVARCHAR(10) NOT NULL DEFAULT 'ACTIVO' CHECK (estado IN ('ACTIVO','INACTIVO','BLOQUEADO')),
+    estado NVARCHAR(20) NOT NULL DEFAULT 'ACTIVO' CHECK (estado IN ('PENDIENTE_ACEPTACION','ACTIVO','INACTIVO','BLOQUEADO')),
     fecha_registro DATETIME2 NOT NULL DEFAULT GETDATE(),
     creado_por INT NULL,
     CONSTRAINT FK_usuarios_creado_por FOREIGN KEY (creado_por) REFERENCES usuarios(id)
@@ -301,3 +301,33 @@ CREATE TABLE auditoria (
     fecha_hora DATETIME2 NOT NULL DEFAULT GETDATE(),
     CONSTRAINT FK_auditoria_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
 );
+
+-- ============================================
+-- MIGRACIONES Y ACTUALIZACIONES
+-- ============================================
+
+-- Migración 1: Agregar estado PENDIENTE_ACEPTACION para flujo de onboarding de clientes
+-- Este script actualiza la columna estado en la tabla usuarios para soportar el nuevo estado
+-- de pendiente aceptación que se utiliza en el flujo de bienvenida de clientes corporativos.
+BEGIN TRY
+  -- Eliminar constraint viejo si existe
+  ALTER TABLE usuarios DROP CONSTRAINT CK_usuarios_estado__98DEE8;
+END TRY
+BEGIN CATCH
+  -- Ignorar si no existe
+END CATCH;
+
+BEGIN TRY
+  -- Cambiar longitud de columna a NVARCHAR(20) para acomodar 'PENDIENTE_ACEPTACION'
+  ALTER TABLE usuarios ALTER COLUMN estado NVARCHAR(20) NOT NULL;
+  
+  -- Crear nuevo constraint con PENDIENTE_ACEPTACION
+  ALTER TABLE usuarios
+  ADD CONSTRAINT CK_usuarios_estado 
+  CHECK (estado IN ('PENDIENTE_ACEPTACION','ACTIVO','INACTIVO','BLOQUEADO'));
+  
+  PRINT 'Migración exitosa: Tabla usuarios actualizada para soportar PENDIENTE_ACEPTACION';
+END TRY
+BEGIN CATCH
+  PRINT 'Error en migración: ' + ERROR_MESSAGE();
+END CATCH;
