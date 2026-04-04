@@ -1,4 +1,3 @@
-// src/App.tsx
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Principal from './pages/Principal/Principal';
 import TiposRegistro from './pages/Registro/TiposRegistro';
@@ -28,6 +27,9 @@ import OrdenDetalle from './pages/piloto/OrdenDetalle';
 import MisOrdenes from './pages/piloto/MisOrdenes';
 import EnTransito from './pages/piloto/EnTransito';
 import Historial from './pages/piloto/Historial';
+
+// Import de Patio (solo el dashboard principal)
+import PrincipalPatio from './pages/patio/PrincipalPatio';
 
 function App() {
   return (
@@ -279,6 +281,16 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={['piloto']}>
                 <ReportarEvento />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* ── Patio (solo dashboard principal) ── */}
+          <Route
+            path="/patio/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={['patio']}>
+                <PrincipalPatio />
               </ProtectedRoute>
             }
           />
