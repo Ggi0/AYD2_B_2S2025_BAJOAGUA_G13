@@ -52,13 +52,14 @@ const ClientesList: React.FC = () => {
   const [riesgoFormData, setRiesgoFormData] = useState<Omit<RiesgoCliente, 'id' | 'usuario_id' | 'evaluado_por' | 'fecha_evaluacion' | 'evaluado_por_nombre'> | null>(null);
   const [riesgoFormLoading, setRiesgoFormLoading] = useState(false);
   const [riesgoDetalle, setRiesgoDetalle] = useState<RiesgoCliente | null>(null);
-  const [newCliente, setNewCliente] = useState<Partial<Cliente>>({
+  const [newCliente, setNewCliente] = useState<Partial<Cliente> & { password?: string }>({
     nombre: '',
     email: '',
     nit: '',
     telefono: '',
     tipo_usuario: 'CLIENTE_CORPORATIVO',
     estado: 'ACTIVO',
+    password: '',
   });
 
   // Cargar clientes al montar el componente
@@ -184,8 +185,12 @@ const ClientesList: React.FC = () => {
   };
 
   const handleSaveCreate = async () => {
-    if (!newCliente.nombre || !newCliente.email || !newCliente.nit || !newCliente.tipo_usuario) {
-      setEditError('Por favor completa todos los campos requeridos');
+    if (!newCliente.nombre || !newCliente.email || !newCliente.nit || !newCliente.tipo_usuario || !(newCliente as any).password) {
+      setEditError('Por favor completa todos los campos requeridos, incluyendo la contraseña');
+      return;
+    }
+    if ((newCliente as any).password.length < 6) {
+      setEditError('La contraseña debe tener al menos 6 caracteres');
       return;
     }
 
@@ -204,9 +209,26 @@ const ClientesList: React.FC = () => {
         telefono: '',
         tipo_usuario: 'CLIENTE_CORPORATIVO',
         estado: 'ACTIVO',
+        password: '',
       });
     } catch (err) {
-      setEditError(err instanceof Error ? err.message : 'Error al crear usuario');
+      let errorMessage = 'Error al crear usuario';
+      
+      if (err instanceof Error) {
+        // Si el error tiene la propiedad mensaje (del backend)
+        if ((err as any).mensaje) {
+          errorMessage = (err as any).mensaje;
+        } else {
+          errorMessage = err.message;
+        }
+      } else if (typeof err === 'object' && err !== null) {
+        const errorObj = err as any;
+        if (errorObj.mensaje) {
+          errorMessage = errorObj.mensaje;
+        }
+      }
+      
+      setEditError(errorMessage);
     } finally {
       setEditLoading(false);
     }
@@ -1523,6 +1545,20 @@ const ClientesList: React.FC = () => {
                   </div>
                 </div>
 
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Contraseña *
+                  </label>
+                  <input
+                    type="password"
+                    value={(newCliente as any).password || ''}
+                    onChange={(e) => handleCreateChange('password', e.target.value)}
+                    placeholder="Mínimo 6 caracteres"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Mínimo 6 caracteres</p>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1575,6 +1611,7 @@ const ClientesList: React.FC = () => {
                     telefono: '',
                     tipo_usuario: 'CLIENTE_CORPORATIVO',
                     estado: 'ACTIVO',
+                    password: '',
                   });
                 }}
                 className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"

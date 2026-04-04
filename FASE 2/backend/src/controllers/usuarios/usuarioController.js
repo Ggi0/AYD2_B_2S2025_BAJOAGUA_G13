@@ -1,5 +1,6 @@
 // controllers/usuarios/usuarioController.js
 const usuarioService = require('../../services/usuarios/usuarioService');
+const bcrypt = require('bcrypt');
 
 const listarUsuarios = async (req, res) => {
   try {
@@ -102,7 +103,6 @@ const crearCliente = async (req, res) => {
     }
 
     // Hash de password
-    const bcrypt = require('bcrypt');
     const saltRounds = 10;
     const password_hash = await bcrypt.hash(password, saltRounds);
 
@@ -136,7 +136,27 @@ const crearCliente = async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(error.status || 500).json({ ok: false, mensaje: error.mensaje || 'Error al crear cliente' });
+    console.error('[crearCliente] Error:', error);
+    
+    let statusCode = 500;
+    let mensaje = 'Error al crear cliente';
+    
+    if (error.status) {
+      statusCode = error.status;
+      mensaje = error.mensaje || mensaje;
+    } else if (error instanceof Error) {
+      if (error.message.includes('UNIQUE')) {
+        statusCode = 400;
+        mensaje = 'El email o NIT ya está registrado';
+      } else if (error.message.includes('CHECK')) {
+        statusCode = 400;
+        mensaje = 'Los datos enviados no cumplen con las restricciones (tipo_usuario o estado inválido)';
+      } else {
+        mensaje = error.message;
+      }
+    }
+    
+    res.status(statusCode).json({ ok: false, mensaje });
   }
 };
 

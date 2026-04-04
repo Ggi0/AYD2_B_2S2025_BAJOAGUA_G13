@@ -18,7 +18,7 @@ const { getConnection } = require('../../config/db');
  */
 async function obtenerNotificaciones(req, res) {
   try {
-    const usuarioId = req.user.id;
+    const usuarioId = req.user.sub;
     const notificaciones = [];
 
     const pool = await getConnection();
@@ -47,8 +47,8 @@ async function obtenerNotificaciones(req, res) {
       .query(`
         SELECT COUNT(*) as cantidad 
         FROM contratos 
-        WHERE fecha_vencimiento BETWEEN GETDATE() AND DATEADD(DAY, 30, GETDATE())
-        AND estado = 'ACTIVO'
+        WHERE fecha_fin BETWEEN GETDATE() AND DATEADD(DAY, 30, GETDATE())
+        AND estado = 'VIGENTE'
       `);
 
     const contratosProximos = contratosProximosResult.recordset[0].cantidad;

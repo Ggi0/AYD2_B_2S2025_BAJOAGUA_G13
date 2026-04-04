@@ -181,7 +181,10 @@ export const useClientes = (): UseClientesReturn => {
       });
 
       if (!response.ok) {
-        throw new Error(response.mensaje || 'Error al crear cliente');
+        // Preservar el mensaje del servidor en el error
+        const error = new Error(response.mensaje || 'Error al crear cliente');
+        (error as any).mensaje = response.mensaje;
+        throw error;
       }
 
       const nuevoCliente = response.data as ClienteDetalle;
