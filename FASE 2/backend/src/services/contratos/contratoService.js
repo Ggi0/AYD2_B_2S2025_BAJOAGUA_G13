@@ -66,7 +66,7 @@ const generarNumeroContrato = async () => {
  * @throws {Error} Si cliente no existe, no es corporativo, inactivo o datos inválidos
  */
 const crearContrato = async (datos, usuario_ejecutor, ip) => {
-  let { numero_contrato, cliente_id, fecha_inicio, fecha_fin, limite_credito, plazo_pago, tarifas, rutas } = datos;
+  let { numero_contrato, cliente_id, fecha_inicio, fecha_fin, limite_credito, plazo_pago, tarifas, rutas, descuentos } = datos;
 
   // Generar número de contrato automáticamente si no se proporciona
   if (!numero_contrato) {
@@ -104,6 +104,18 @@ const crearContrato = async (datos, usuario_ejecutor, ip) => {
   if (rutas && rutas.length > 0) {
     for (const ruta of rutas) {
       await RutaAutorizada.crearRuta({ contrato_id: contrato.id, ...ruta });
+    }
+  }
+
+  if (descuentos && descuentos.length > 0) {
+    for (const descuento of descuentos) {
+      await Descuento.crearDescuento({
+        contrato_id: contrato.id,
+        tipo_unidad: descuento.tipo_unidad.toUpperCase(),
+        porcentaje_descuento: descuento.porcentaje_descuento,
+        observacion: descuento.observacion || null,
+        autorizado_por: usuario_ejecutor
+      });
     }
   }
 

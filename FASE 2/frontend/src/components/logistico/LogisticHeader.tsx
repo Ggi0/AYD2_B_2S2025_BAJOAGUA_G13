@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FaUser, FaSignOutAlt, FaTruck, FaBell, FaChartLine } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import { API_BASE_URL } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 
 interface LogisticHeaderProps {
   userName?: string;
@@ -20,6 +21,7 @@ const LogisticHeader: React.FC<LogisticHeaderProps> = ({
   userRole = "Logística"
 }) => {
   const navigate = useNavigate();
+  const { token, logout: logoutAuth } = useAuth();
   const [showNotifications, setShowNotifications] = useState(false);
   const [notifications, setNotifications] = useState<Notificacion[]>([]);
   const [notificationCount, setNotificationCount] = useState(0);
@@ -27,7 +29,6 @@ const LogisticHeader: React.FC<LogisticHeaderProps> = ({
   useEffect(() => {
     const fetchNotifications = async () => {
       try {
-        const token = localStorage.getItem('userToken');
         if (!token) {
           console.warn('No token available for notifications');
           return;
@@ -46,23 +47,22 @@ const LogisticHeader: React.FC<LogisticHeaderProps> = ({
           setNotificationCount(data.total || 0);
         } else if (response.status === 401) {
           console.warn('Token unauthorized, refreshing...');
-          localStorage.removeItem('userToken');
+          logoutAuth();
         }
       } catch (error) {
         console.error('Error fetching notifications:', error);
       }
     };
 
-    fetchNotifications();
-    const interval = setInterval(fetchNotifications, 30000); // Actualizar cada 30 segundos
-
-    return () => clearInterval(interval);
-  }, []);
+    if (token) {
+      fetchNotifications();
+      const interval = setInterval(fetchNotifications, 30000); // Actualizar cada 30 segundos
+      return () => clearInterval(interval);
+    }
+  }, [token, logoutAuth]);
 
   const handleLogout = () => {
-    localStorage.removeItem('userToken');
-    localStorage.removeItem('userRole');
-    localStorage.removeItem('userEmail');
+    logoutAuth();
     navigate('/login');
   };
 

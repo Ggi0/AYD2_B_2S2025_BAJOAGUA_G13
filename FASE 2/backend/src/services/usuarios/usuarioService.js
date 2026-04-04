@@ -300,16 +300,25 @@ const crearCliente = async (datos, usuario_ejecutor, ip) => {
     creado_por: usuario_ejecutor
   });
 
-  // Registrar en auditoría
-  await Auditoria.registrar({
-    tabla_afectada: 'usuarios',
-    accion: 'CREATE',
-    registro_id: usuarioCreado.id,
-    usuario_id: usuario_ejecutor,
-    descripcion: `Nuevo usuario creado: ${usuarioCreado.nombre} (${usuarioCreado.tipo_usuario}) - Estado: ${usuarioCreado.estado}`,
-    datos_nuevos: usuarioCreado,
-    ip_origen: ip
-  });
+  // Registrar en auditoría solo si hay usuario ejecutor (sin bloquear si falla)
+  if (usuario_ejecutor) {
+    try {
+      await Auditoria.registrar({
+        tabla_afectada: 'usuarios',
+        accion: 'CREATE',
+        registro_id: usuarioCreado.id,
+        usuario_id: usuario_ejecutor,
+        descripcion: `Nuevo usuario creado: ${usuarioCreado.nombre} (${usuarioCreado.tipo_usuario}) - Estado: ${usuarioCreado.estado}`,
+        datos_nuevos: usuarioCreado,
+        ip_origen: ip
+      });
+    } catch (auditError) {
+      console.error('[crearCliente] Error registrando auditoría:', auditError);
+      // No bloquear la operación si la auditoría falla
+    }
+  } else {
+    console.warn('[crearCliente] Usuario no autenticado, auditoría no registrada');
+  }
 
   return usuarioCreado;
 };

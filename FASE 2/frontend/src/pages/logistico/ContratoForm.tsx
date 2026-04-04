@@ -566,8 +566,8 @@ const ContratoForm: React.FC = () => {
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-2">Costo negociado por km (GTQ) *</label>
                   <input
-                    type="number" value={nuevaTarifa.costo_km_negociado}
-                    onChange={(e) => setNuevaTarifa({ ...nuevaTarifa, costo_km_negociado: parseFloat(e.target.value) })}
+                    type="number" value={isNaN(nuevaTarifa.costo_km_negociado) ? '' : nuevaTarifa.costo_km_negociado}
+                    onChange={(e) => setNuevaTarifa({ ...nuevaTarifa, costo_km_negociado: parseFloat(e.target.value) || 0 })}
                     className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-blue-600 transition-all hover:border-blue-300"
                     step="0.01" placeholder="Ej: 7.50"
                   />
@@ -699,8 +699,8 @@ const ContratoForm: React.FC = () => {
                 <label className="block text-sm font-bold text-gray-700 mb-2">Distancia (km)</label>
                 <input
                   type="number"
-                  value={nuevaRuta.distancia_km}
-                  onChange={(e) => setNuevaRuta({ ...nuevaRuta, distancia_km: parseFloat(e.target.value) })}
+                  value={isNaN(nuevaRuta.distancia_km) ? '' : nuevaRuta.distancia_km}
+                  onChange={(e) => setNuevaRuta({ ...nuevaRuta, distancia_km: parseFloat(e.target.value) || 0 })}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-purple-600 transition-all hover:border-purple-300"
                   step="0.01"
                   placeholder="0.00"
@@ -788,8 +788,8 @@ const ContratoForm: React.FC = () => {
                 <label className="block text-sm font-bold text-gray-700 mb-2">Porcentaje Descuento (%)</label>
                 <input
                   type="number"
-                  value={nuevoDescuento.porcentaje_descuento}
-                  onChange={(e) => setNuevoDescuento({ ...nuevoDescuento, porcentaje_descuento: parseFloat(e.target.value) })}
+                  value={isNaN(nuevoDescuento.porcentaje_descuento) ? '' : nuevoDescuento.porcentaje_descuento}
+                  onChange={(e) => setNuevoDescuento({ ...nuevoDescuento, porcentaje_descuento: parseFloat(e.target.value) || 0 })}
                   className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-600 focus:border-green-600 transition-all hover:border-green-300"
                   step="0.01"
                   min="0"
