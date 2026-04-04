@@ -2,14 +2,10 @@
 import React, { useState } from 'react';
 import { 
   FaTachometerAlt,
-  FaTruck, 
-  FaClipboardList,
-  FaMapMarkerAlt,
   FaUsers,
   FaBars,
   FaTimes,
   FaFileContract,
-  FaChartLine
 } from 'react-icons/fa';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -39,29 +35,11 @@ const LogisticMenu: React.FC = () => {
       path: '/logistico/contratos'
     },
     {
-      id: 'ordenes',
-      label: 'Órdenes de Servicio',
-      icon: <FaClipboardList className="h-5 w-5" />,
-      path: '/logistico/ordenes'
-    },
-    {
-      id: 'asignaciones',
-      label: 'Asignaciones',
-      icon: <FaTruck className="h-5 w-5" />,
-      path: '/logistico/asignaciones'
-    },
-    {
       id: 'clientes',
       label: 'Clientes',
       icon: <FaUsers className="h-5 w-5" />,
       path: '/logistico/clientes'
     },
-    {
-      id: 'reportes',
-      label: 'Reportes',
-      icon: <FaChartLine className="h-5 w-5" />,
-      path: '/logistico/reportes'
-    }
   ];
 
   const handleNavigation = (path: string) => {
