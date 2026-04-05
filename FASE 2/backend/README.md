@@ -258,6 +258,77 @@ Puede:
 pedir transporte
 ver estado del envío
 ver facturas
+
+---
+
+# Trazabilidad Dashboard Gerencial
+
+Esta sección documenta la cobertura de los requisitos gerenciales en backend.
+
+## 1) Corte diario de operaciones y facturación por sede
+
+- Endpoint: `GET /api/gerencial/corte-diario`
+- Ruta: `src/routes/gerencial/dashboard.routes.js`
+- Lógica: `src/services/gerencial/dashboard.service.js` (`getCorteDiario`)
+- Fuentes de datos:
+        - `ordenes` para operaciones del día
+        - `facturas_fel` para facturación del día
+- Resultado:
+        - Resumen total
+        - Consolidado por sede (Guatemala, Xela, Puerto Barrios)
+
+## 2) KPIs de rentabilidad (ingresos vs costos)
+
+- Endpoint: `GET /api/gerencial/kpis?desde=YYYY-MM-DD&hasta=YYYY-MM-DD&sede=<sede>`
+- Ruta: `src/routes/gerencial/dashboard.routes.js`
+- Lógica: `src/services/gerencial/dashboard.service.js` (`getKpis`)
+- Fuentes de datos:
+        - `historial_cliente` (monto_facturado, gasto_operativo)
+        - `ordenes` y `orden_kpi` para métricas operativas
+- Fórmulas principales:
+        - `rentabilidad_monto = SUM(ingresos) - SUM(costos)`
+        - `rentabilidad_porcentaje = rentabilidad_monto / SUM(ingresos) * 100`
+
+## 3) Cumplimiento por tiempo pactado vs tiempo real
+
+- Endpoint: `GET /api/gerencial/kpis`
+- Criterio de tiempo pactado:
+        - Se usa `ordenes.tiempo_estimado` como tiempo pactado operativo
+        - Fallback: `orden_kpi.tiempo_planificado` si no hay tiempo estimado
+- Criterio de cumplimiento:
+        - Orden a tiempo cuando `tiempo_real <= tiempo_pactado`
+        - `cumplimiento_porcentaje = ordenes_a_tiempo / ordenes_con_medicion * 100`
+
+## 4) Alertas de desviación
+
+- Endpoint: `GET /api/gerencial/alertas?desde=YYYY-MM-DD&hasta=YYYY-MM-DD`
+- Ruta: `src/routes/gerencial/dashboard.routes.js`
+- Lógica: `src/services/gerencial/dashboard.service.js` (`getAlertas`)
+- Tipos implementados:
+        - `BAJA_CARGA_CLIENTE`: caída semanal de volumen de carga > 30%
+        - `EXCESO_CONSUMO_RUTA`: costo por tonelada > 120% del promedio global
+
+## 5) Actualización de KPIs
+
+- Estrategia implementada: cálculo en tiempo real bajo demanda del endpoint.
+- Evidencia en respuesta:
+        - `modoActualizacion: "TIEMPO_REAL"`
+        - `actualizadoEn: <timestamp ISO8601>`
+
+## 6) Seguridad de acceso
+
+- Middleware aplicado a todo el módulo gerencial:
+        - `requireAuth`
+        - `requireRole("gerencia")`
+
+## 7) Evidencia de pruebas backend
+
+- Archivo de pruebas unitarias:
+        - `tests/dashboard.service.test.js`
+- Cobertura actual:
+        - Normalización de sedes (incluye `puerto_barrios`)
+        - Validación de fechas
+        - Generación del CASE SQL por sede
 ```
 
 ---
