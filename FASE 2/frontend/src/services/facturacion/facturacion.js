@@ -58,7 +58,7 @@ export const certificarFactura = async (facturaId) =>
   req(`/facturacion/${facturaId}/certificar`, { method: "POST" });
 
 export const getFacturasByCliente = async (clienteId) => {
-  return apiService["request"](`/facturacion/facturas?cliente_id=${clienteId}`, {
+  return apiService["request"](`/facturacion?cliente_id=${clienteId}`, {
     method: "GET",
   });
 };

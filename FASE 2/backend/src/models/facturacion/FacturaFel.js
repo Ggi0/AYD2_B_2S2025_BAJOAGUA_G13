@@ -58,21 +58,21 @@ const crearBorrador = async (datos) => {
     subtotal, iva, total_factura,
     nit_cliente, nombre_cliente_facturacion,
   } = datos;
-
+ 
   const pool   = await getConnection();
   const result = await pool.request()
-    .input("orden_id",                   sql.Int,           orden_id)
-    .input("cliente_id",                 sql.Int,           cliente_id)
-    .input("contrato_id",                sql.Int,           contrato_id)
-    .input("numero_factura",             sql.NVarChar,      numero_factura)
+    .input("orden_id",                   sql.Int,            orden_id)
+    .input("cliente_id",                 sql.Int,            cliente_id)
+    .input("contrato_id",                sql.Int,            contrato_id)
+    .input("numero_factura",             sql.NVarChar(50),   numero_factura)
     .input("distancia_km",               sql.Decimal(10, 2), distancia_km)
     .input("tarifa_aplicada",            sql.Decimal(10, 2), tarifa_aplicada)
     .input("descuento_aplicado",         sql.Decimal(15, 2), descuento_aplicado)
     .input("subtotal",                   sql.Decimal(15, 2), subtotal)
     .input("iva",                        sql.Decimal(15, 2), iva)
     .input("total_factura",              sql.Decimal(15, 2), total_factura)
-    .input("nit_cliente",                sql.NVarChar,      nit_cliente)
-    .input("nombre_cliente_facturacion", sql.NVarChar,      nombre_cliente_facturacion)
+    .input("nit_cliente",                sql.NVarChar(13),   nit_cliente)
+    .input("nombre_cliente_facturacion", sql.NVarChar(255),  nombre_cliente_facturacion)
     .query(`
       INSERT INTO facturas_fel (
         orden_id, cliente_id, contrato_id, numero_factura,
@@ -92,7 +92,7 @@ const crearBorrador = async (datos) => {
         GETDATE()
       )
     `);
-
+ 
   return result.recordset[0];
 };
 
@@ -111,25 +111,25 @@ const crearBorrador = async (datos) => {
 const certificarFactura = async (factura_id, certificado_por, uuid_autorizacion, xml_fel, pdf_fel_url) => {
   const pool   = await getConnection();
   const result = await pool.request()
-    .input("factura_id",       sql.Int,      factura_id)
-    .input("certificado_por",  sql.Int,      certificado_por)
-    .input("uuid_autorizacion", sql.NVarChar, uuid_autorizacion)
-    .input("xml_fel",          sql.NVarChar, xml_fel)
-    .input("pdf_fel_url",      sql.NVarChar, pdf_fel_url)
+    .input("factura_id",        sql.Int,          factura_id)
+    .input("certificado_por",   sql.Int,          certificado_por)
+    .input("uuid_autorizacion", sql.NVarChar(100), uuid_autorizacion)
+    .input("xml_fel",           sql.NVarChar(sql.MAX), xml_fel)
+    .input("pdf_fel_url",       sql.NVarChar(500), pdf_fel_url)
     .query(`
       UPDATE facturas_fel
-      SET estado               = 'CERTIFICADA',
-          certificado_por      = @certificado_por,
-          uuid_autorizacion    = @uuid_autorizacion,
-          xml_fel              = @xml_fel,
-          pdf_fel_url          = @pdf_fel_url,
-          fecha_certificacion  = GETDATE()
+      SET estado              = 'CERTIFICADA',
+          certificado_por     = @certificado_por,
+          uuid_autorizacion   = @uuid_autorizacion,
+          xml_fel             = @xml_fel,
+          pdf_fel_url         = @pdf_fel_url,
+          fecha_certificacion = GETDATE()
       OUTPUT INSERTED.*
       WHERE id = @factura_id
         AND estado = 'VALIDADA'
     `);
-
-  return result.recordset[0];   // undefined si no estaba en VALIDADA
+ 
+  return result.recordset[0];
 };
 
 /**
@@ -145,9 +145,9 @@ const certificarFactura = async (factura_id, certificado_por, uuid_autorizacion,
 const actualizarEstado = async (factura_id, estado, observaciones = null) => {
   const pool   = await getConnection();
   const result = await pool.request()
-    .input("factura_id",    sql.Int,      factura_id)
-    .input("estado",        sql.NVarChar, estado)
-    .input("observaciones", sql.NVarChar, observaciones)
+    .input("factura_id",    sql.Int,          factura_id)
+    .input("estado",        sql.NVarChar(15), estado)
+    .input("observaciones", sql.NVarChar(1000), observaciones)
     .query(`
       UPDATE facturas_fel
       SET estado        = @estado,
@@ -155,7 +155,7 @@ const actualizarEstado = async (factura_id, estado, observaciones = null) => {
       OUTPUT INSERTED.*
       WHERE id = @factura_id
     `);
-
+ 
   return result.recordset[0];
 };
 
@@ -173,20 +173,24 @@ const buscarPorId = async (factura_id) => {
     .query(`
       SELECT
         f.*,
-        u.nombre  AS cliente_nombre,
-        u.email   AS cliente_email,
+        u.nombre   AS cliente_nombre,
+        u.email    AS cliente_email,
         c.numero_contrato,
         c.plazo_pago,
-        ag.nombre AS certificado_por_nombre
+        ag.nombre  AS certificado_por_nombre,
+        o.origen,
+        o.destino
       FROM facturas_fel f
       LEFT JOIN usuarios u  ON u.id  = f.cliente_id
       LEFT JOIN contratos c ON c.id  = f.contrato_id
       LEFT JOIN usuarios ag ON ag.id = f.certificado_por
+      LEFT JOIN ordenes o   ON o.id  = f.orden_id
       WHERE f.id = @factura_id
     `);
-
+ 
   return result.recordset[0];
 };
+
 
 /**
  * Obtiene la factura vinculada a una orden específica.
@@ -204,9 +208,10 @@ const buscarPorOrden = async (orden_id) => {
       LEFT JOIN usuarios u ON u.id = f.cliente_id
       WHERE f.orden_id = @orden_id
     `);
-
+ 
   return result.recordset[0];
 };
+
 
 /**
  * Lista facturas con filtros opcionales.
@@ -216,19 +221,19 @@ const buscarPorOrden = async (orden_id) => {
  */
 const listar = async (filtros = {}) => {
   const { cliente_id, estado, fecha_desde, fecha_hasta, limit = 50 } = filtros;
-
+ 
   const pool    = await getConnection();
   const request = pool.request();
-
+ 
   let where = "WHERE 1=1";
-
+ 
   if (cliente_id) {
     where += " AND f.cliente_id = @cliente_id";
     request.input("cliente_id", sql.Int, cliente_id);
   }
   if (estado) {
     where += " AND f.estado = @estado";
-    request.input("estado", sql.NVarChar, estado);
+    request.input("estado", sql.NVarChar(15), estado);
   }
   if (fecha_desde) {
     where += " AND CAST(f.fecha_emision AS DATE) >= @fecha_desde";
@@ -238,17 +243,27 @@ const listar = async (filtros = {}) => {
     where += " AND CAST(f.fecha_emision AS DATE) <= @fecha_hasta";
     request.input("fecha_hasta", sql.Date, fecha_hasta);
   }
-
+ 
   request.input("limit", sql.Int, parseInt(limit));
-
+ 
   const result = await request.query(`
     SELECT
-      f.id, f.numero_factura, f.estado,
-      f.distancia_km, f.tarifa_aplicada, f.descuento_aplicado,
-      f.subtotal, f.iva, f.total_factura,
-      f.nit_cliente, f.nombre_cliente_facturacion,
-      f.uuid_autorizacion, f.pdf_fel_url,
-      f.fecha_emision, f.fecha_certificacion,
+      f.id,
+      f.orden_id,          -- CORRECCIÓN: estaba faltando
+      f.numero_factura,
+      f.estado,
+      f.distancia_km,
+      f.tarifa_aplicada,
+      f.descuento_aplicado,
+      f.subtotal,
+      f.iva,
+      f.total_factura,
+      f.nit_cliente,
+      f.nombre_cliente_facturacion,
+      f.uuid_autorizacion,
+      f.pdf_fel_url,
+      f.fecha_emision,
+      f.fecha_certificacion,
       u.nombre AS cliente_nombre,
       c.numero_contrato
     FROM facturas_fel f
@@ -258,7 +273,7 @@ const listar = async (filtros = {}) => {
     ORDER BY f.fecha_emision DESC
     OFFSET 0 ROWS FETCH NEXT @limit ROWS ONLY
   `);
-
+ 
   return result.recordset;
 };
 
@@ -288,17 +303,17 @@ const registrarValidacion = async (datos) => {
     resultado_validacion, mensaje_validacion,
     uuid_generado, validado_por,
   } = datos;
-
+ 
   const pool   = await getConnection();
   const result = await pool.request()
-    .input("factura_id",                   sql.Int,      factura_id)
-    .input("nit_validado",                 sql.NVarChar, nit_validado)
-    .input("nit_valido",                   sql.Bit,      nit_valido ? 1 : 0)
-    .input("campos_obligatorios_completos", sql.Bit,     campos_obligatorios_completos ? 1 : 0)
-    .input("resultado_validacion",         sql.NVarChar, resultado_validacion)
-    .input("mensaje_validacion",           sql.NVarChar, mensaje_validacion)
-    .input("uuid_generado",               sql.NVarChar, uuid_generado)
-    .input("validado_por",                sql.Int,      validado_por)
+    .input("factura_id",                    sql.Int,          factura_id)
+    .input("nit_validado",                  sql.NVarChar(13), nit_validado)
+    .input("nit_valido",                    sql.Bit,          nit_valido ? 1 : 0)
+    .input("campos_obligatorios_completos", sql.Bit,          campos_obligatorios_completos ? 1 : 0)
+    .input("resultado_validacion",          sql.NVarChar(10), resultado_validacion)
+    .input("mensaje_validacion",            sql.NVarChar(500), mensaje_validacion)
+    .input("uuid_generado",                 sql.NVarChar(100), uuid_generado || null)
+    .input("validado_por",                  sql.Int,          validado_por)
     .query(`
       INSERT INTO validacion_fel (
         factura_id, nit_validado, nit_valido,
@@ -314,7 +329,7 @@ const registrarValidacion = async (datos) => {
         @uuid_generado, @validado_por, GETDATE()
       )
     `);
-
+ 
   return result.recordset[0];
 };
 
@@ -337,14 +352,14 @@ const registrarValidacion = async (datos) => {
  */
 const crearCuentaPorCobrar = async (datos) => {
   const { factura_id, cliente_id, contrato_id, monto_original, plazo_pago } = datos;
-
+ 
   const pool   = await getConnection();
   const result = await pool.request()
-    .input("factura_id",    sql.Int,           factura_id)
-    .input("cliente_id",    sql.Int,           cliente_id)
-    .input("contrato_id",   sql.Int,           contrato_id)
+    .input("factura_id",     sql.Int,            factura_id)
+    .input("cliente_id",     sql.Int,            cliente_id)
+    .input("contrato_id",    sql.Int,            contrato_id)
     .input("monto_original", sql.Decimal(15, 2), monto_original)
-    .input("plazo_pago",    sql.Int,           plazo_pago)
+    .input("plazo_pago",     sql.Int,            plazo_pago)
     .query(`
       INSERT INTO cuentas_por_cobrar (
         factura_id, cliente_id, contrato_id,
@@ -361,7 +376,7 @@ const crearCuentaPorCobrar = async (datos) => {
         'PENDIENTE', 1
       )
     `);
-
+ 
   return result.recordset[0];
 };
 
@@ -374,29 +389,31 @@ const crearCuentaPorCobrar = async (datos) => {
  */
 const listarCuentasPorCobrar = async (filtros = {}) => {
   const { cliente_id, estado_cobro, limit = 100 } = filtros;
-
+ 
   const pool    = await getConnection();
   const request = pool.request();
-
+ 
   let where = "WHERE 1=1";
-
+ 
   if (cliente_id) {
     where += " AND cxc.cliente_id = @cliente_id";
     request.input("cliente_id", sql.Int, cliente_id);
   }
   if (estado_cobro) {
     where += " AND cxc.estado_cobro = @estado_cobro";
-    request.input("estado_cobro", sql.NVarChar, estado_cobro);
+    request.input("estado_cobro", sql.NVarChar(10), estado_cobro);
   }
-
+ 
   request.input("limit", sql.Int, parseInt(limit));
-
+ 
   const result = await request.query(`
     SELECT
       cxc.*,
-      f.numero_factura, f.uuid_autorizacion,
+      f.numero_factura,
+      f.uuid_autorizacion,
       u.nombre AS cliente_nombre,
-      c.numero_contrato, c.plazo_pago
+      c.numero_contrato,
+      c.plazo_pago
     FROM cuentas_por_cobrar cxc
     LEFT JOIN facturas_fel f ON f.id  = cxc.factura_id
     LEFT JOIN usuarios u     ON u.id  = cxc.cliente_id
@@ -405,7 +422,7 @@ const listarCuentasPorCobrar = async (filtros = {}) => {
     ORDER BY cxc.fecha_vencimiento ASC
     OFFSET 0 ROWS FETCH NEXT @limit ROWS ONLY
   `);
-
+ 
   return result.recordset;
 };
 
@@ -420,11 +437,11 @@ const listarCuentasPorCobrar = async (filtros = {}) => {
 const actualizarCuentaPorCobrar = async (cuenta_id, nuevo_saldo) => {
   const pool   = await getConnection();
   const estado = nuevo_saldo <= 0 ? "PAGADA" : "PENDIENTE";
-
+ 
   const result = await pool.request()
-    .input("cuenta_id",    sql.Int,           cuenta_id)
+    .input("cuenta_id",    sql.Int,            cuenta_id)
     .input("nuevo_saldo",  sql.Decimal(15, 2), nuevo_saldo)
-    .input("estado_cobro", sql.NVarChar,       estado)
+    .input("estado_cobro", sql.NVarChar(10),   estado)
     .query(`
       UPDATE cuentas_por_cobrar
       SET saldo_pendiente   = @nuevo_saldo,
@@ -433,9 +450,10 @@ const actualizarCuentaPorCobrar = async (cuenta_id, nuevo_saldo) => {
       OUTPUT INSERTED.*
       WHERE id = @cuenta_id
     `);
-
+ 
   return result.recordset[0];
 };
+
 
 /* 
    SECCIÓN 4 — PAGOS
@@ -467,20 +485,20 @@ const registrarPago = async (datos) => {
     banco_origen, cuenta_origen, numero_autorizacion_bancaria,
     registrado_por, observacion,
   } = datos;
-
+ 
   const pool   = await getConnection();
   const result = await pool.request()
-    .input("factura_id",                   sql.Int,           factura_id)
-    .input("cuenta_por_cobrar_id",         sql.Int,           cuenta_por_cobrar_id)
-    .input("cliente_id",                   sql.Int,           cliente_id)
-    .input("forma_pago",                   sql.NVarChar,      forma_pago)
+    .input("factura_id",                   sql.Int,            factura_id)
+    .input("cuenta_por_cobrar_id",         sql.Int,            cuenta_por_cobrar_id)
+    .input("cliente_id",                   sql.Int,            cliente_id)
+    .input("forma_pago",                   sql.NVarChar(15),   forma_pago)
     .input("monto_pagado",                 sql.Decimal(15, 2), monto_pagado)
-    .input("fecha_hora_pago",              sql.DateTime2,     new Date(fecha_hora_pago))
-    .input("banco_origen",                 sql.NVarChar,      banco_origen)
-    .input("cuenta_origen",               sql.NVarChar,      cuenta_origen)
-    .input("numero_autorizacion_bancaria", sql.NVarChar,      numero_autorizacion_bancaria)
-    .input("registrado_por",              sql.Int,           registrado_por)
-    .input("observacion",                 sql.NVarChar,      observacion || null)
+    .input("fecha_hora_pago",              sql.DateTime2,      new Date(fecha_hora_pago))
+    .input("banco_origen",                 sql.NVarChar(100),  banco_origen)
+    .input("cuenta_origen",               sql.NVarChar(50),   cuenta_origen)
+    .input("numero_autorizacion_bancaria", sql.NVarChar(100),  numero_autorizacion_bancaria)
+    .input("registrado_por",              sql.Int,            registrado_por)
+    .input("observacion",                 sql.NVarChar(500),  observacion || null)
     .query(`
       INSERT INTO pagos_factura (
         factura_id, cuenta_por_cobrar_id, cliente_id,
@@ -496,7 +514,7 @@ const registrarPago = async (datos) => {
         @registrado_por, @observacion, GETDATE()
       )
     `);
-
+ 
   return result.recordset[0];
 };
 
@@ -552,18 +570,18 @@ const registrarMovimientoCredito = async (datos) => {
     saldo_anterior, saldo_nuevo,
     motivo, registrado_por,
   } = datos;
-
+ 
   const pool   = await getConnection();
   const result = await pool.request()
-    .input("contrato_id",       sql.Int,           contrato_id)
-    .input("factura_id",        sql.Int,           factura_id)
-    .input("pago_id",           sql.Int,           pago_id || null)
-    .input("tipo_movimiento",   sql.NVarChar,      tipo_movimiento)
-    .input("monto_movimiento",  sql.Decimal(15, 2), monto_movimiento)
-    .input("saldo_anterior",    sql.Decimal(15, 2), saldo_anterior)
-    .input("saldo_nuevo",       sql.Decimal(15, 2), saldo_nuevo)
-    .input("motivo",            sql.NVarChar,      motivo)
-    .input("registrado_por",    sql.Int,           registrado_por)
+    .input("contrato_id",      sql.Int,            contrato_id)
+    .input("factura_id",       sql.Int,            factura_id)
+    .input("pago_id",          sql.Int,            pago_id || null)
+    .input("tipo_movimiento",  sql.NVarChar(6),    tipo_movimiento)
+    .input("monto_movimiento", sql.Decimal(15, 2), monto_movimiento)
+    .input("saldo_anterior",   sql.Decimal(15, 2), saldo_anterior)
+    .input("saldo_nuevo",      sql.Decimal(15, 2), saldo_nuevo)
+    .input("motivo",           sql.NVarChar(500),  motivo)
+    .input("registrado_por",   sql.Int,            registrado_por)
     .query(`
       INSERT INTO movimientos_credito_contrato (
         contrato_id, factura_id, pago_id,
@@ -579,7 +597,7 @@ const registrarMovimientoCredito = async (datos) => {
         @motivo, @registrado_por, GETDATE()
       )
     `);
-
+ 
   return result.recordset[0];
 };
 
@@ -588,14 +606,24 @@ const registrarMovimientoCredito = async (datos) => {
     */
 
 /**
- * Obtiene todos los datos necesarios para generar el borrador de factura
- * a partir de una orden entregada.
+ * obtenerDatosParaBorrador
  *
- * Devuelve: datos de la orden, contrato, tarifa negociada,
- *           descuento especial y datos del cliente.
+ * CORRECCIÓN PRINCIPAL (Bug 1 — "Invalid column name 'tipo_unidad'"):
  *
- * ---> 
- * 
+ * La query anterior intentaba hacer:
+ *   JOIN tarifario t ON t.tipo_unidad = v.tipo_unidad
+ * pero la tabla `tarifario` SÍ tiene tipo_unidad. El problema estaba en que
+ * el JOIN de contrato_tarifas usaba AND ct.tarifario_id = t.id, creando una
+ * cadena de JOINs que SQL Server no podía resolver cuando no existe una
+ * tarifa negociada para ese tipo.
+ *
+ * Solución: la query se divide en dos pasos:
+ *   1. Busca el tipo_unidad del vehículo de la orden.
+ *   2. Busca la tarifa negociada del contrato para ese tipo.
+ *      Si no existe tarifa negociada, usa el costo_base_km del tarifario global.
+ *
+ * También se acepta que la orden puede estar en estado "CERRADA" o "ENTREGADA"
+ * (el estado "CERRADA" es el que usa tu módulo de órdenes al finalizar).
  */
 const obtenerDatosParaBorrador = async (orden_id) => {
   const pool   = await getConnection();
@@ -614,45 +642,62 @@ const obtenerDatosParaBorrador = async (orden_id) => {
         o.peso_real,
         o.estado          AS estado_orden,
         o.vehiculo_id,
-
+ 
         -- Contrato
         c.numero_contrato,
         c.plazo_pago,
         c.saldo_usado     AS contrato_saldo_usado,
         c.limite_credito  AS contrato_limite_credito,
-
-        -- Tarifa negociada para el tipo de unidad del vehículo
-        ct.costo_km_negociado AS tarifa_aplicada,
-        t.tipo_unidad,
-
-        -- Descuento especial (puede ser NULL si no hay)
+ 
+        -- Tipo de vehículo (para saber qué tarifa aplicar)
+        tar.tipo_unidad,
+ 
+        -- Tarifa negociada: si existe en contrato_tarifas se usa esa;
+        -- si no, se cae al costo_base_km global del tarifario.
+        COALESCE(ct.costo_km_negociado, tar.costo_base_km) AS tarifa_aplicada,
+ 
+        -- Descuento especial del contrato para ese tipo de unidad (puede ser NULL)
         dc.porcentaje_descuento,
-
-        -- Ruta autorizada con distancia
+ 
+        -- Distancia de la ruta autorizada (puede ser NULL si no se configuró)
         ra.distancia_km,
-
+ 
         -- Datos del cliente
         u.nombre          AS cliente_nombre,
         u.nit             AS cliente_nit,
         u.email           AS cliente_email
-
+ 
       FROM ordenes o
-      JOIN contratos c        ON c.id = o.contrato_id
-      JOIN vehiculos v         ON v.id = o.vehiculo_id
-      JOIN tarifario t         ON t.tipo_unidad = v.tipo_unidad
-      JOIN contrato_tarifas ct ON ct.contrato_id = o.contrato_id
-                               AND ct.tarifario_id = t.id
+      -- Contrato del cliente
+      JOIN contratos c
+        ON c.id = o.contrato_id
+      -- Vehículo asignado a la orden
+      JOIN vehiculos v
+        ON v.id = o.vehiculo_id
+      -- Tarifario global según el tipo de unidad del vehículo
+      JOIN tarifario tar
+        ON tar.id = v.tarifario_id
+        AND tar.activo = 1
+      -- Tarifa negociada en el contrato (LEFT: puede no existir)
+      LEFT JOIN contrato_tarifas ct
+        ON ct.contrato_id = o.contrato_id
+        AND ct.tarifario_id = tar.id
+      -- Descuento especial en el contrato para ese tipo (LEFT: puede no existir)
       LEFT JOIN descuentos_contrato dc
-                               ON dc.contrato_id = o.contrato_id
-                               AND dc.tipo_unidad = v.tipo_unidad
+        ON dc.contrato_id = o.contrato_id
+        AND dc.tipo_unidad = tar.tipo_unidad
+      -- Ruta autorizada con distancia (LEFT: puede no tener distancia configurada)
       LEFT JOIN rutas_autorizadas ra
-                               ON ra.contrato_id = o.contrato_id
-                               AND ra.origen     = o.origen
-                               AND ra.destino    = o.destino
-      JOIN usuarios u          ON u.id = o.cliente_id
+        ON ra.contrato_id = o.contrato_id
+        AND ra.origen  = o.origen
+        AND ra.destino = o.destino
+        AND ra.activa  = 1
+      -- Cliente
+      JOIN usuarios u
+        ON u.id = o.cliente_id
       WHERE o.id = @orden_id
     `);
-
+ 
   return result.recordset[0];
 };
 

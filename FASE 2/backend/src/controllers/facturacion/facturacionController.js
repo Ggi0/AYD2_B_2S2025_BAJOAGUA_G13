@@ -26,6 +26,37 @@ const ok  = (res, data, mensaje = "OK", status = 200) =>
 const err = (res, mensaje, status = 500, detalle = null) =>
   res.status(status).json({ ok: false, mensaje, ...(detalle ? { detalle } : {}) });
 
+
+/**
+ * Extrae el ID numérico del usuario desde el payload del JWT.
+ * Soporta los campos: id, sub, usuario_id.
+ * Lanza un error HTTP 401 si no puede resolver el ID.
+ */
+function resolverUserId(user) {
+  if (!user) {
+    throw Object.assign(
+      new Error("Token inválido: no hay información de usuario."),
+      { status: 401 }
+    );
+  }
+ 
+  // Probar los campos en orden de prioridad
+  const candidatos = [user.id, user.sub, user.usuario_id];
+  for (const c of candidatos) {
+    const n = parseInt(c);
+    if (!isNaN(n) && n > 0) return n;
+  }
+ 
+  throw Object.assign(
+    new Error(
+      `Token inválido: no se pudo obtener el ID de usuario. ` +
+      `Payload recibido: ${JSON.stringify(user)}`
+    ),
+    { status: 401 }
+  );
+}
+
+
 /* 
    1. GENERAR BORRADOR (CDU003.1)
    POST /api/facturacion/borrador/:orden_id
@@ -42,27 +73,28 @@ const err = (res, mensaje, status = 500, detalle = null) =>
  POST /api/facturacion/borrador/:orden_id
  AGENTE_FINANCIERO | AREA_CONTABLE
  */
-const generarBorrador = async (req, res) => {
+ const generarBorrador = async (req, res) => {
   try {
     const orden_id  = parseInt(req.params.orden_id);
-    const usuarioId = req.user.id;
-
+    const usuarioId = resolverUserId(req.user);      // ← usa helper robusto
+ 
     if (isNaN(orden_id)) {
       return err(res, "orden_id debe ser un número entero", 400);
     }
-
+ 
     const resultado = await facturacionService.generarBorrador(orden_id, usuarioId);
-
+ 
     const mensaje = resultado.yaExistia
       ? "Ya existía una factura para esta orden. Se retorna la existente."
       : "Borrador de factura generado exitosamente.";
-
+ 
     return ok(res, resultado, mensaje, resultado.yaExistia ? 200 : 201);
   } catch (error) {
-    const status = error.status || 500;
-    return err(res, error.message, status);
+    return err(res, error.message, error.status || 500);
   }
 };
+
+
 
 /* 
    2. VALIDAR BORRADOR (CDU003.2)
@@ -80,24 +112,25 @@ const generarBorrador = async (req, res) => {
 const validarBorrador = async (req, res) => {
   try {
     const factura_id  = parseInt(req.params.factura_id);
-    const validado_por = req.user.id;
-
+    const validado_por = resolverUserId(req.user);    // ← FIX del NULL
+ 
     if (isNaN(factura_id)) {
       return err(res, "factura_id debe ser un número entero", 400);
     }
-
+ 
     const resultado = await facturacionService.validarFactura(factura_id, validado_por);
-
+ 
     const mensaje = resultado.resultado.aprobada
       ? "Factura validada correctamente. Lista para certificación FEL."
-      : "Validación rechazada. Corrija los errores indicados antes de reintentar.";
-
+      : "Validación rechazada. Corrija los errores indicados.";
+ 
     return ok(res, resultado, mensaje, resultado.resultado.aprobada ? 200 : 422);
   } catch (error) {
-    const status = error.status || 500;
-    return err(res, error.message, status);
+    return err(res, error.message, error.status || 500);
   }
 };
+
+
 
 /* 
    3. CERTIFICAR FEL (CDU003.3)
@@ -120,24 +153,18 @@ const validarBorrador = async (req, res) => {
  */
 const certificarFactura = async (req, res) => {
   try {
-    const factura_id    = parseInt(req.params.factura_id);
-    const certificadoPor = req.user.id;
-
+    const factura_id     = parseInt(req.params.factura_id);
+    const certificadoPor = resolverUserId(req.user);
+ 
     if (isNaN(factura_id)) {
       return err(res, "factura_id debe ser un número entero", 400);
     }
-
+ 
     const resultado = await facturacionService.certificarFactura(factura_id, certificadoPor);
-
-    return ok(
-      res,
-      resultado,
-      `Factura certificada exitosamente. UUID SAT: ${resultado.uuid}`,
-      200
-    );
+ 
+    return ok(res, resultado, `Factura certificada. UUID SAT: ${resultado.uuid}`, 200);
   } catch (error) {
-    const status = error.status || 500;
-    return err(res, error.message, status, error.detallesSAT || null);
+    return err(res, error.message, error.status || 500, error.detallesSAT || null);
   }
 };
 
@@ -166,13 +193,12 @@ const certificarFactura = async (req, res) => {
 const registrarPago = async (req, res) => {
   try {
     const factura_id    = parseInt(req.params.factura_id);
-    const registradoPor = req.user.id;
-
+    const registradoPor = resolverUserId(req.user);
+ 
     if (isNaN(factura_id)) {
       return err(res, "factura_id debe ser un número entero", 400);
     }
-
-    // Validar campos obligatorios del body
+ 
     const {
       cuenta_por_cobrar_id,
       forma_pago,
@@ -183,7 +209,7 @@ const registrarPago = async (req, res) => {
       numero_autorizacion_bancaria,
       observacion,
     } = req.body;
-
+ 
     const requeridos = {
       cuenta_por_cobrar_id,
       forma_pago,
@@ -193,23 +219,23 @@ const registrarPago = async (req, res) => {
       cuenta_origen,
       numero_autorizacion_bancaria,
     };
-
+ 
     const faltantes = Object.entries(requeridos)
       .filter(([, v]) => v === undefined || v === null || v === "")
       .map(([k]) => k);
-
+ 
     if (faltantes.length > 0) {
       return err(res, `Campos obligatorios faltantes: ${faltantes.join(", ")}`, 400);
     }
-
+ 
     if (!["CHEQUE", "TRANSFERENCIA"].includes(forma_pago)) {
       return err(res, "forma_pago debe ser CHEQUE o TRANSFERENCIA", 400);
     }
-
+ 
     if (isNaN(parseFloat(monto_pagado)) || parseFloat(monto_pagado) <= 0) {
       return err(res, "monto_pagado debe ser un número positivo", 400);
     }
-
+ 
     const resultado = await facturacionService.registrarPago(
       {
         factura_id,
@@ -224,7 +250,7 @@ const registrarPago = async (req, res) => {
       },
       registradoPor
     );
-
+ 
     return ok(
       res,
       resultado,
@@ -232,8 +258,7 @@ const registrarPago = async (req, res) => {
       201
     );
   } catch (error) {
-    const status = error.status || 500;
-    return err(res, error.message, status);
+    return err(res, error.message, error.status || 500);
   }
 };
 
@@ -255,12 +280,10 @@ const obtenerFactura = async (req, res) => {
     if (isNaN(factura_id)) {
       return err(res, "factura_id debe ser un número entero", 400);
     }
-
     const datos = await facturacionService.obtenerFacturaCompleta(factura_id);
     return ok(res, datos, "Factura obtenida exitosamente.");
   } catch (error) {
-    const status = error.status || 500;
-    return err(res, error.message, status);
+    return err(res, error.message, error.status || 500);
   }
 };
 
@@ -285,20 +308,21 @@ const obtenerFactura = async (req, res) => {
 const listarFacturas = async (req, res) => {
   try {
     const { cliente_id, estado, fecha_desde, fecha_hasta, limit } = req.query;
-
+ 
     const facturas = await FacturaFEL.listar({
-      cliente_id: cliente_id ? parseInt(cliente_id) : undefined,
+      cliente_id:  cliente_id  ? parseInt(cliente_id)  : undefined,
       estado,
       fecha_desde,
       fecha_hasta,
-      limit: limit ? parseInt(limit) : 50,
+      limit:       limit       ? parseInt(limit)       : 50,
     });
-
+ 
     return ok(res, { facturas, total: facturas.length }, "Facturas obtenidas exitosamente.");
   } catch (error) {
     return err(res, error.message);
   }
 };
+
 
 /* 
    7. LISTAR CUENTAS POR COBRAR (CDU003.7 / CDU003.8)
@@ -320,13 +344,13 @@ const listarFacturas = async (req, res) => {
 const listarCobros = async (req, res) => {
   try {
     const { cliente_id, estado_cobro, limit } = req.query;
-
+ 
     const cuentas = await FacturaFEL.listarCuentasPorCobrar({
       cliente_id:   cliente_id   ? parseInt(cliente_id) : undefined,
       estado_cobro: estado_cobro || undefined,
-      limit:        limit        ? parseInt(limit) : 100,
+      limit:        limit        ? parseInt(limit)      : 100,
     });
-
+ 
     return ok(res, { cuentas, total: cuentas.length }, "Cuentas por cobrar obtenidas.");
   } catch (error) {
     return err(res, error.message);
@@ -350,7 +374,6 @@ const listarPagos = async (req, res) => {
     if (isNaN(factura_id)) {
       return err(res, "factura_id debe ser un número entero", 400);
     }
-
     const pagos = await FacturaFEL.listarPagosPorFactura(factura_id);
     return ok(res, { pagos, total: pagos.length }, "Pagos obtenidos.");
   } catch (error) {
@@ -379,17 +402,22 @@ const obtenerPorOrden = async (req, res) => {
     if (isNaN(orden_id)) {
       return err(res, "orden_id debe ser un número entero", 400);
     }
-
+ 
     const factura = await FacturaFEL.buscarPorOrden(orden_id);
     if (!factura) {
-      return err(res, `No existe factura para la orden ${orden_id}. Verifique que la orden esté ENTREGADA y el borrador haya sido generado.`, 404);
+      return err(
+        res,
+        `No existe factura para la orden ${orden_id}. Verifique que la orden esté ENTREGADA/CERRADA y el borrador haya sido generado.`,
+        404
+      );
     }
-
+ 
     return ok(res, { factura }, "Factura de la orden obtenida.");
   } catch (error) {
     return err(res, error.message);
   }
 };
+
 
 module.exports = {
   generarBorrador,

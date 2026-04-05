@@ -1,13 +1,13 @@
-// src/pages/client/ClientePagosPage.tsx
+
+
 import React, { useEffect, useState, useCallback } from 'react';
-import { FaCreditCard, FaCheckCircle, FaUniversity, FaMoneyCheckAlt, FaEye } from 'react-icons/fa';
 import { useAuth } from '../../context/AuthContext';
 import ClientHeader from '../../components/client/ClientHeader';
 import ClientMenu from '../../components/client/ClientMenu';
-import { getPagosByCliente } from '../../services/facturacion/pagos';
-import { formatMoney, formatDate } from '../../services/client/client';
+import { getPagosByCliente, getCobrosCliente, registrarPago } from '../../services/facturacion/pagos';
+import './cliente_estilo.css';
 
-// ── Tipos ──────────────────────────────────────────────
+/* ── Tipos ─────────────────────────────────────────────── */
 interface Pago {
   id: number;
   factura_id: number;
@@ -18,300 +18,600 @@ interface Pago {
   banco?: string;
   referencia?: string;
   fecha_pago: string;
-  estado?: string;
+  registrado_por_nombre?: string;
 }
 
-// ── Utilidades ─────────────────────────────────────────
-const getTipoPagoInfo = (tipo: string) => {
-  if (tipo === 'TRANSFERENCIA') {
-    return {
-      label: 'Transferencia',
-      color: 'text-blue-700',
-      bg: 'bg-blue-100',
-      icon: <FaUniversity className="w-3 h-3" />,
-    };
-  }
-  return {
-    label: 'Cheque',
-    color: 'text-purple-700',
-    bg: 'bg-purple-100',
-    icon: <FaMoneyCheckAlt className="w-3 h-3" />,
+interface CuentaPorCobrar {
+  id: number;
+  factura_id: number;
+  numero_factura?: string;
+  monto_original: number;
+  saldo_pendiente: number;
+  fecha_vencimiento: string;
+  estado_cobro: 'PENDIENTE' | 'PAGADA' | 'VENCIDA' | 'ANULADA';
+}
+
+/* ── Utilidades ─────────────────────────────────────────── */
+const fmtMoney = (n: number) =>
+  `Q ${(n ?? 0).toLocaleString('es-GT', { minimumFractionDigits: 2 })}`;
+
+const fmtDate = (s?: string) =>
+  s ? new Date(s).toLocaleDateString('es-GT', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+const fmtDateTime = (s?: string) =>
+  s ? new Date(s).toLocaleString('es-GT') : '—';
+
+const tipoBadge = (tipo: string) =>
+  tipo === 'TRANSFERENCIA' ? 'cl-badge cl-badge-transferencia' : 'cl-badge cl-badge-cheque';
+
+const cobroBadge = (estado: string) => {
+  const mapa: Record<string, string> = {
+    PENDIENTE: 'cl-badge cl-badge-pendiente',
+    PAGADA:    'cl-badge cl-badge-pagada',
+    VENCIDA:   'cl-badge cl-badge-vencida',
+    ANULADA:   'cl-badge cl-badge-anulada',
   };
+  return mapa[estado] ?? 'cl-badge';
 };
 
-// ── Modal detalle ──────────────────────────────────────
-const ModalDetalle: React.FC<{ pago: Pago; onClose: () => void }> = ({ pago, onClose }) => {
-  const tipoInfo = getTipoPagoInfo(pago.tipo_pago);
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6">
-        <div className="flex justify-between items-start mb-6">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">Detalle de Pago</h2>
-            <span className={`inline-flex items-center gap-1 mt-1 px-2 py-0.5 text-xs font-semibold rounded-full ${tipoInfo.bg} ${tipoInfo.color}`}>
-              {tipoInfo.icon} {tipoInfo.label}
+
+
+/* ── Modal de detalle de pago ───────────────────────────── */
+const ModalDetallePago: React.FC<{ pago: Pago; onClose: () => void }> = ({ pago, onClose }) => (
+  <div className="cl-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="cl-modal">
+      <div className="cl-modal-header">
+        <div>
+          <h3>Detalle del Pago</h3>
+          <span className="modal-subtitle">Factura {pago.numero_factura ?? `#${pago.factura_id}`}</span>
+        </div>
+        <button className="cl-modal-close" onClick={onClose}>✕</button>
+      </div>
+
+      <div className="cl-modal-body">
+        <div className="cl-kv-list">
+          <div className="cl-kv-row">
+            <span className="kv-label">Tipo de pago</span>
+            <span className="kv-value">
+              <span className={tipoBadge(pago.tipo_pago)}>{pago.tipo_pago}</span>
             </span>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
-        </div>
-
-        <div className="space-y-3 text-sm">
-          <div className="flex justify-between">
-            <span className="text-gray-500">Fecha de pago</span>
-            <span className="font-medium text-gray-900">{formatDate(pago.fecha_pago)}</span>
+          <div className="cl-kv-row">
+            <span className="kv-label">Fecha y hora</span>
+            <span className="kv-value">{fmtDateTime(pago.fecha_pago)}</span>
           </div>
-          {pago.numero_factura && (
-            <div className="flex justify-between">
-              <span className="text-gray-500">Factura asociada</span>
-              <span className="font-medium text-gray-900">{pago.numero_factura}</span>
-            </div>
-          )}
           {pago.banco && (
-            <div className="flex justify-between">
-              <span className="text-gray-500">Banco</span>
-              <span className="font-medium text-gray-900">{pago.banco}</span>
+            <div className="cl-kv-row">
+              <span className="kv-label">Banco</span>
+              <span className="kv-value">{pago.banco}</span>
             </div>
           )}
           {pago.referencia && (
-            <div className="flex justify-between">
-              <span className="text-gray-500">Referencia</span>
-              <span className="font-medium text-gray-900">{pago.referencia}</span>
+            <div className="cl-kv-row">
+              <span className="kv-label">Cuenta origen</span>
+              <span className="kv-value mono">{pago.referencia}</span>
             </div>
           )}
-          <div className="flex flex-col gap-1">
-            <span className="text-gray-500">N° Autorización</span>
-            <span className="font-mono text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1 break-all text-gray-800">
-              {pago.numero_autorizacion}
-            </span>
-          </div>
-          <div className="flex justify-between border-t border-gray-200 pt-3 mt-3">
-            <span className="text-gray-700 font-semibold">Monto pagado</span>
-            <span className="text-xl font-bold text-green-700">{formatMoney(pago.monto)}</span>
+          {pago.registrado_por_nombre && (
+            <div className="cl-kv-row">
+              <span className="kv-label">Registrado por</span>
+              <span className="kv-value">{pago.registrado_por_nombre}</span>
+            </div>
+          )}
+
+          <hr className="cl-kv-divider" />
+
+          <div className="cl-kv-row cl-kv-total">
+            <span className="kv-label">Monto pagado</span>
+            <span className="kv-value">{fmtMoney(pago.monto)}</span>
           </div>
         </div>
 
-        <button
-          onClick={onClose}
-          className="mt-6 w-full py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors font-medium"
-        >
+        <div className="cl-auth-box">
+          <div className="auth-label">N° Autorización bancaria</div>
+          <div className="auth-value">{pago.numero_autorizacion}</div>
+        </div>
+      </div>
+
+      <div className="cl-modal-footer">
+        <button className="cl-btn cl-btn-naranja cl-btn-sm" onClick={onClose}>
           Cerrar
         </button>
       </div>
     </div>
-  );
-};
+  </div>
+);
 
-// ── Componente principal ───────────────────────────────
+/* ══════════════════════════════════════════════════════════
+   COMPONENTE PRINCIPAL
+   ══════════════════════════════════════════════════════════ */
 const ClientePagosPage: React.FC = () => {
   const { user } = useAuth();
-  const [pagos, setPagos] = useState<Pago[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [pagoSeleccionado, setPagoSeleccionado] = useState<Pago | null>(null);
-  const [filtroTipo, setFiltroTipo] = useState<string>('TODOS');
 
-  const userName = user?.nombres && user?.apellidos
+  /* Estado */
+  const [pagos,   setPagos]   = useState<Pago[]>([]);
+  const [cobros,  setCobros]  = useState<CuentaPorCobrar[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState<string | null>(null);
+
+  const [filtroTipo,    setFiltroTipo]    = useState('TODOS');
+  const [pagoDetalle,   setPagoDetalle]   = useState<Pago | null>(null);
+  const [vistaActiva,   setVistaActiva]   = useState<'pagos' | 'cobros'>('pagos');
+
+  const [mostrarModalPago, setMostrarModalPago] = useState(false);
+const [cxcSeleccionada, setCxcSeleccionada] = useState<CuentaPorCobrar | null>(null);
+
+const [formPago, setFormPago] = useState({
+  forma_pago: 'TRANSFERENCIA',
+  monto_pagado: 0,
+  fecha_hora_pago: '',
+  banco_origen: '',
+  cuenta_origen: '',
+  numero_autorizacion_bancaria: '',
+  observacion: '',
+});
+
+const [loadingPago, setLoadingPago] = useState(false);
+
+  /* Info del usuario */
+  const userName    = user?.nombres && user?.apellidos
     ? `${user.nombres} ${user.apellidos}`
-    : user?.email?.split('@')[0] || 'Cliente';
-  const companyName = user?.empresa || 'Mi Empresa';
-  const userId = user?.id;
+    : user?.email?.split('@')[0] ?? 'Cliente';
+  const companyName = user?.empresa ?? 'Mi Empresa';
+  const userId      = user?.id;
 
-  const cargarPagos = useCallback(async () => {
+  /* ── Carga de datos ── */
+  const cargar = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
     setError(null);
     try {
-      const response = await getPagosByCliente(userId);
-      if (response?.ok) {
-        setPagos(response.data || []);
-      } else {
-        setError(response?.mensaje || 'Error al cargar pagos');
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al cargar pagos');
+      const [resPagos, resCobros] = await Promise.all([
+        getPagosByCliente(userId),
+        getCobrosCliente(userId, { limit: 100 }),
+      ]);
+
+      setPagos(resPagos?.data ?? []);
+
+      const listaCobros = resCobros?.data?.cuentas ?? resCobros?.data ?? [];
+      setCobros(listaCobros);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al cargar datos');
     } finally {
       setLoading(false);
     }
   }, [userId]);
 
-  useEffect(() => { cargarPagos(); }, [cargarPagos]);
+  useEffect(() => { cargar(); }, [cargar]);
 
-  // Estadísticas
-  const totalPagos        = pagos.length;
-  const totalPagado       = pagos.reduce((s, p) => s + p.monto, 0);
-  const transferencias    = pagos.filter(p => p.tipo_pago === 'TRANSFERENCIA').length;
-  const cheques           = pagos.filter(p => p.tipo_pago === 'CHEQUE').length;
 
+  const handleRegistrarPago = async () => {
+    if (!cxcSeleccionada) return;
+  
+    try {
+      setLoadingPago(true);
+  
+      await registrarPago(cxcSeleccionada.factura_id, {
+        cuenta_por_cobrar_id: cxcSeleccionada.id,
+        ...formPago,
+      });
+  
+      setMostrarModalPago(false);
+      setCxcSeleccionada(null);
+  
+      // recargar datos
+      await cargar();
+  
+    } catch (e: any) {
+      alert(e.message || 'Error al registrar pago');
+    } finally {
+      setLoadingPago(false);
+    }
+  };
+
+  /* ── Métricas ── */
+  const totalPagado      = pagos.reduce((s, p) => s + (p.monto ?? 0), 0);
+  const transferencias   = pagos.filter(p => p.tipo_pago === 'TRANSFERENCIA').length;
+  const cheques          = pagos.filter(p => p.tipo_pago === 'CHEQUE').length;
+  const pendienteTotal   = cobros
+    .filter(c => c.estado_cobro !== 'PAGADA' && c.estado_cobro !== 'ANULADA')
+    .reduce((s, c) => s + c.saldo_pendiente, 0);
+
+  /* ── Pagos filtrados ── */
   const pagosFiltrados = filtroTipo === 'TODOS'
     ? pagos
     : pagos.filter(p => p.tipo_pago === filtroTipo);
 
-  if (loading && pagos.length === 0) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <ClientHeader companyName={companyName} userName={userName} />
-        <ClientMenu />
-        <div className="flex justify-center items-center py-16">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600" />
-        </div>
-      </div>
-    );
-  }
-
+  /* ── Render ── */
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="cl-page">
       <ClientHeader companyName={companyName} userName={userName} />
       <ClientMenu />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-
-        {/* Título */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Mis Pagos</h1>
-          <p className="text-gray-600 mt-1">Historial de pagos realizados y liberación de crédito</p>
+      <div className="cl-container">
+        <div className="cl-page-header">
+          <h1>Mis Pagos y Cobros</h1>
+          <p>Historial de pagos registrados y estado de tus cuentas por cobrar</p>
         </div>
 
         {error && (
-          <div className="mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg flex justify-between items-center">
-            <span>{error}</span>
-            <button onClick={() => setError(null)} className="text-red-700 hover:text-red-900 font-bold">×</button>
+          <div className="cl-alert cl-alert-error">
+            ✕ {error}
+            <button
+              onClick={() => setError(null)}
+              style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}
+            >
+              ×
+            </button>
           </div>
         )}
 
-        {/* Tarjetas resumen */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-500 text-sm">Total Pagos</p>
-                <p className="text-2xl font-bold text-gray-900">{totalPagos}</p>
-              </div>
-              <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center">
-                <FaCreditCard className="w-6 h-6 text-white" />
-              </div>
+        {/* ── Stats ── */}
+        <div className="cl-stats-grid">
+          <div className="cl-stat-card">
+            <div className="cl-stat-icon cl-stat-icon-verde">💰</div>
+            <div className="cl-stat-info">
+              <p className="stat-label">Total pagado</p>
+              <p className="stat-value-sm stat-value-verde">{fmtMoney(totalPagado)}</p>
             </div>
           </div>
-
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-500 text-sm">Monto Total Pagado</p>
-                <p className="text-xl font-bold text-green-600">{formatMoney(totalPagado)}</p>
-              </div>
-              <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center">
-                <FaCheckCircle className="w-6 h-6 text-white" />
-              </div>
+          <div className="cl-stat-card">
+            <div className="cl-stat-icon cl-stat-icon-naranja">📄</div>
+            <div className="cl-stat-info">
+              <p className="stat-label">Pagos registrados</p>
+              <p className="stat-value">{pagos.length}</p>
             </div>
           </div>
-
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-500 text-sm">Transferencias</p>
-                <p className="text-2xl font-bold text-blue-600">{transferencias}</p>
-              </div>
-              <div className="w-12 h-12 bg-blue-400 rounded-full flex items-center justify-center">
-                <FaUniversity className="w-6 h-6 text-white" />
-              </div>
+          <div className="cl-stat-card">
+            <div className="cl-stat-icon cl-stat-icon-azul">🏦</div>
+            <div className="cl-stat-info">
+              <p className="stat-label">Transferencias</p>
+              <p className="stat-value stat-value-azul">{transferencias}</p>
             </div>
           </div>
-
-          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-500 text-sm">Cheques</p>
-                <p className="text-2xl font-bold text-purple-600">{cheques}</p>
-              </div>
-              <div className="w-12 h-12 bg-purple-500 rounded-full flex items-center justify-center">
-                <FaMoneyCheckAlt className="w-6 h-6 text-white" />
-              </div>
+          <div className="cl-stat-card">
+            <div className="cl-stat-icon cl-stat-icon-purpura">📝</div>
+            <div className="cl-stat-info">
+              <p className="stat-label">Cheques</p>
+              <p className="stat-value">{cheques}</p>
+            </div>
+          </div>
+          <div className="cl-stat-card">
+            <div className="cl-stat-icon cl-stat-icon-rojo">⏳</div>
+            <div className="cl-stat-info">
+              <p className="stat-label">Saldo pendiente</p>
+              <p className="stat-value-sm stat-value-rojo">{fmtMoney(pendienteTotal)}</p>
             </div>
           </div>
         </div>
 
-        {/* Tabla */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">Historial de Pagos</h3>
-              <p className="text-sm text-gray-500 mt-0.5">Cada pago libera automáticamente tu límite de crédito</p>
-            </div>
-            <select
-              value={filtroTipo}
-              onChange={e => setFiltroTipo(e.target.value)}
-              className="text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-orange-400"
-            >
-              <option value="TODOS">Todos los tipos</option>
-              <option value="TRANSFERENCIA">Transferencia</option>
-              <option value="CHEQUE">Cheque</option>
-            </select>
-          </div>
+        {/* ── Tabs ── */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <button
+            className={`cl-btn cl-btn-sm ${vistaActiva === 'pagos' ? 'cl-btn-naranja' : 'cl-btn-ghost'}`}
+            onClick={() => setVistaActiva('pagos')}
+          >
+            💳 Historial de pagos
+          </button>
+          <button
+            className={`cl-btn cl-btn-sm ${vistaActiva === 'cobros' ? 'cl-btn-naranja' : 'cl-btn-ghost'}`}
+            onClick={() => setVistaActiva('cobros')}
+          >
+            📋 Cuentas por cobrar
+          </button>
+          <button
+            className="cl-btn cl-btn-ghost cl-btn-sm"
+            style={{ marginLeft: 'auto' }}
+            onClick={cargar}
+          >
+            ↺ Actualizar
+          </button>
+        </div>
 
-          {pagosFiltrados.length === 0 ? (
-            <div className="text-center py-16">
-              <FaCreditCard className="w-12 h-12 text-gray-200 mx-auto mb-3" />
-              <p className="text-gray-500">No hay pagos que mostrar</p>
+        {/* ════════════════════════════════════════
+            VISTA: HISTORIAL DE PAGOS
+            ════════════════════════════════════════ */}
+        {vistaActiva === 'pagos' && (
+          <div className="cl-panel">
+            <div className="cl-panel-header">
+              <div>
+                <h2>Historial de Pagos</h2>
+                <p>Cada pago registrado libera tu límite de crédito automáticamente</p>
+              </div>
+              <div className="cl-filtros" style={{ marginBottom: 0 }}>
+                <select
+                  className="cl-select"
+                  value={filtroTipo}
+                  onChange={(e) => setFiltroTipo(e.target.value)}
+                >
+                  <option value="TODOS">Todos los tipos</option>
+                  <option value="TRANSFERENCIA">Transferencia</option>
+                  <option value="CHEQUE">Cheque</option>
+                </select>
+              </div>
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fecha</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Factura</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Banco</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Monto</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {pagosFiltrados.map(pago => {
-                    const tipoInfo = getTipoPagoInfo(pago.tipo_pago);
-                    return (
-                      <tr key={pago.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 text-sm text-gray-600">
-                          {formatDate(pago.fecha_pago)}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">
-                          {pago.numero_factura || `#${pago.factura_id}`}
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full ${tipoInfo.bg} ${tipoInfo.color}`}>
-                            {tipoInfo.icon} {tipoInfo.label}
+
+            {loading ? (
+              <div className="cl-spinner" />
+            ) : pagosFiltrados.length === 0 ? (
+              <div className="cl-empty">
+                <span className="empty-icon">💳</span>
+                <p>
+                  {pagos.length === 0
+                    ? 'No hay pagos registrados aún'
+                    : 'No hay pagos con el filtro seleccionado'}
+                </p>
+              </div>
+            ) : (
+              <div className="cl-table-wrap">
+                <table className="cl-table">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Factura</th>
+                      <th>Tipo</th>
+                      <th>Banco</th>
+                      <th>Monto pagado</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagosFiltrados.map((pago) => (
+                      <tr key={pago.id}>
+                        <td>{fmtDate(pago.fecha_pago)}</td>
+                        <td className="mono">{pago.numero_factura ?? `#${pago.factura_id}`}</td>
+                        <td>
+                          <span className={tipoBadge(pago.tipo_pago)}>
+                            {pago.tipo_pago === 'TRANSFERENCIA' ? '🏦 Transferencia' : '📝 Cheque'}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">
-                          {pago.banco || '—'}
+                        <td>{pago.banco ?? '—'}</td>
+                        <td>
+                          <strong style={{ color: 'var(--cl-verde)' }}>
+                            {fmtMoney(pago.monto)}
+                          </strong>
                         </td>
-                        <td className="px-6 py-4 text-sm font-semibold text-green-700">
-                          {formatMoney(pago.monto)}
-                        </td>
-                        <td className="px-6 py-4">
+                        <td>
                           <button
-                            onClick={() => setPagoSeleccionado(pago)}
-                            className="text-orange-600 hover:text-orange-900 transition-colors"
+                            className="cl-btn-icon"
                             title="Ver detalle"
+                            onClick={() => setPagoDetalle(pago)}
                           >
-                            <FaEye className="h-4 w-4" />
+                            👁
                           </button>
                         </td>
                       </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                    ))}
+                    {/* Fila de total */}
+                    <tr style={{ background: 'var(--cl-gris-light)', fontWeight: 700 }}>
+                      <td colSpan={4} style={{ padding: '10px 14px', color: 'var(--cl-texto-suave)', fontSize: '0.78rem' }}>
+                        Total {filtroTipo !== 'TODOS' ? `(${filtroTipo})` : ''}
+                      </td>
+                      <td style={{ padding: '10px 14px', color: 'var(--cl-verde)' }}>
+                        {fmtMoney(pagosFiltrados.reduce((s, p) => s + (p.monto ?? 0), 0))}
+                      </td>
+                      <td />
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ════════════════════════════════════════
+            VISTA: CUENTAS POR COBRAR
+            ════════════════════════════════════════ */}
+        {vistaActiva === 'cobros' && (
+          <div className="cl-panel">
+            <div className="cl-panel-header">
+              <div>
+                <h2>Cuentas por Cobrar</h2>
+                <p>Estado de tus facturas y fechas de vencimiento</p>
+              </div>
             </div>
-          )}
+
+            {loading ? (
+              <div className="cl-spinner" />
+            ) : cobros.length === 0 ? (
+              <div className="cl-empty">
+                <span className="empty-icon">📋</span>
+                <p>No hay cuentas por cobrar registradas</p>
+              </div>
+            ) : (
+              <div className="cl-table-wrap">
+                <table className="cl-table">
+                  <thead>
+                    <tr>
+                      <th>Factura</th>
+                      <th>Monto original</th>
+                      <th>Saldo pendiente</th>
+                      <th>Vencimiento</th>
+                      <th>Estado</th>
+                      <th>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cobros.map((c) => {
+                      const vencida = c.estado_cobro === 'VENCIDA';
+                      return (
+                        <tr
+                          key={c.id}
+                          style={vencida ? { background: '#fff8f8' } : undefined}
+                        >
+                          <td className="mono">
+                            {c.numero_factura ?? `ID:${c.factura_id}`}
+                          </td>
+                          <td>{fmtMoney(c.monto_original)}</td>
+                          <td>
+                            <strong
+                              style={{
+                                color: c.saldo_pendiente > 0
+                                  ? 'var(--cl-rojo)'
+                                  : 'var(--cl-verde)',
+                              }}
+                            >
+                              {fmtMoney(c.saldo_pendiente)}
+                            </strong>
+                          </td>
+                          <td style={{ color: vencida ? 'var(--cl-rojo)' : undefined }}>
+                            {fmtDate(c.fecha_vencimiento)}
+                            {vencida && ' ⚠️'}
+                          </td>
+                          <td>
+                            <span className={cobroBadge(c.estado_cobro)}>
+                              {c.estado_cobro}
+                            </span>
+                          </td>
+
+
+                          <td>
+  {c.estado_cobro !== 'PAGADA' && c.estado_cobro !== 'ANULADA' && (
+    <button
+      className="cl-btn cl-btn-naranja cl-btn-sm"
+      onClick={() => {
+        setCxcSeleccionada(c);
+        setFormPago({
+          forma_pago: 'TRANSFERENCIA',
+          monto_pagado: c.saldo_pendiente,
+          fecha_hora_pago: new Date().toISOString().slice(0,16),
+          banco_origen: '',
+          cuenta_origen: '',
+          numero_autorizacion_bancaria: '',
+          observacion: '',
+        });
+        setMostrarModalPago(true);
+      }}
+    >
+      💳 Pagar
+    </button>
+  )}
+</td>
+
+
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {cobros.some(c => c.estado_cobro === 'VENCIDA') && (
+              <div className="cl-alert cl-alert-error" style={{ margin: '12px 18px' }}>
+                ⚠️ Tienes cuentas vencidas. Contacta a tu agente financiero para regularizar.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Modal de detalle */}
+      {pagoDetalle && (
+        <ModalDetallePago
+          pago={pagoDetalle}
+          onClose={() => setPagoDetalle(null)}
+        />
+      )}
+
+{mostrarModalPago && cxcSeleccionada && (
+  <div className="cl-overlay" onClick={(e) => e.target === e.currentTarget && setMostrarModalPago(false)}>
+    <div className="cl-modal">
+      <div className="cl-modal-header">
+        <h3>Registrar Pago</h3>
+        <button className="cl-modal-close" onClick={() => setMostrarModalPago(false)}>✕</button>
+      </div>
+
+      <div className="cl-modal-body">
+        <div className="cl-kv-list">
+
+          <div className="cl-kv-row">
+            <span>Factura</span>
+            <strong>{cxcSeleccionada.numero_factura ?? `#${cxcSeleccionada.factura_id}`}</strong>
+          </div>
+
+          <div className="cl-kv-row">
+            <span>Saldo pendiente</span>
+            <strong>{fmtMoney(cxcSeleccionada.saldo_pendiente)}</strong>
+          </div>
+
+          <hr />
+
+          {/* FORMULARIO */}
+          <select
+            className="cl-input"
+            value={formPago.forma_pago}
+            onChange={(e) => setFormPago({ ...formPago, forma_pago: e.target.value })}
+          >
+            <option value="TRANSFERENCIA">Transferencia</option>
+            <option value="CHEQUE">Cheque</option>
+          </select>
+
+          <input
+            type="number"
+            className="cl-input"
+            placeholder="Monto"
+            value={formPago.monto_pagado}
+            onChange={(e) => setFormPago({ ...formPago, monto_pagado: Number(e.target.value) })}
+          />
+
+          <input
+            type="datetime-local"
+            className="cl-input"
+            value={formPago.fecha_hora_pago}
+            onChange={(e) => setFormPago({ ...formPago, fecha_hora_pago: e.target.value })}
+          />
+
+          <input
+            className="cl-input"
+            placeholder="Banco"
+            value={formPago.banco_origen}
+            onChange={(e) => setFormPago({ ...formPago, banco_origen: e.target.value })}
+          />
+
+          <input
+            className="cl-input"
+            placeholder="Cuenta origen"
+            value={formPago.cuenta_origen}
+            onChange={(e) => setFormPago({ ...formPago, cuenta_origen: e.target.value })}
+          />
+
+          <input
+            className="cl-input"
+            placeholder="Número autorización"
+            value={formPago.numero_autorizacion_bancaria}
+            onChange={(e) => setFormPago({ ...formPago, numero_autorizacion_bancaria: e.target.value })}
+          />
+
+          <textarea
+            className="cl-input"
+            placeholder="Observación (opcional)"
+            value={formPago.observacion}
+            onChange={(e) => setFormPago({ ...formPago, observacion: e.target.value })}
+          />
+
         </div>
       </div>
 
-      {pagoSeleccionado && (
-        <ModalDetalle
-          pago={pagoSeleccionado}
-          onClose={() => setPagoSeleccionado(null)}
-        />
-      )}
+      <div className="cl-modal-footer">
+        <button className="cl-btn cl-btn-ghost" onClick={() => setMostrarModalPago(false)}>
+          Cancelar
+        </button>
+
+        <button
+          className="cl-btn cl-btn-naranja"
+          onClick={handleRegistrarPago}
+          disabled={loadingPago}
+        >
+          {loadingPago ? 'Procesando...' : 'Confirmar Pago'}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+
+
     </div>
   );
 };

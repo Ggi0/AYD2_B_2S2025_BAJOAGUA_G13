@@ -195,6 +195,7 @@ router.post(
   validarBorrador
 );
 
+
 /**
  *  POST /api/facturacion/:factura_id/certificar
  *   Certifica la factura ante el simulador FEL de la SAT (CDU003.3)
@@ -284,7 +285,10 @@ router.post(
  *   }
  * }
  * respuesta :: 422 { ok: false, mensaje: "El monto pagado supera el saldo pendiente." }
- */
+
+ ---> para pagar
+
+*/
 router.post(
   "/:factura_id/pagos",
   requireAuth,
