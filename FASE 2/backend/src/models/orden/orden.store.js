@@ -1,6 +1,7 @@
 "use strict";
 const { sql, getConnection } = require("../../config/db");
 
+
 async function obtenerContextoValidacion(cliente_id, origen, destino, peso) {
   const pool = await getConnection();
   const result = await pool
@@ -436,6 +437,25 @@ async function registrarEventoBitacora(datos) {
   return result.recordset[0];
 }
 
+/**
+ * Genera el borrador de factura para una orden recién cerrada.
+ * Se llama DESPUÉS de que la transacción de cierre de orden hace commit.
+ *
+ * @param {number} ordenId
+ */
+async function generarBorradorPostCierre(ordenId) {
+  // Importación dinámica para evitar dependencias circulares
+  // (orden.store → facturacion.service → contrato.model → ¿orden?)
+  const facturacionService = require("../facturacion/Facturacion");
+
+  // usuario_id = 0 es un placeholder; generarBorrador no lo usa
+  // para ninguna operación en BD (solo se pasaba para logs futuros)
+  await facturacionService.generarBorrador(ordenId, 0);
+
+  console.log(`[orden.store] Borrador de factura generado para orden ${ordenId}`);
+}
+
+
 async function finalizarEntrega(ordenId, rutasArchivos) {
   const pool = await getConnection();
   const transaction = new sql.Transaction(pool);
@@ -519,6 +539,26 @@ async function finalizarEntrega(ordenId, rutasArchivos) {
       `);
 
     await transaction.commit();
+
+     // ── NUEVO: generar borrador de factura automáticamente ──────────────
+  // Se ejecuta FUERA de la transacción para no bloquear el cierre.
+  // Si falla, solo se loguea; el agente puede generarlo manualmente.
+  try {
+    const facturacionService = require("../facturacion/FacturaFel");
+    // usuario_id: puede ser null aquí; el servicio lo acepta para el
+    // generarBorrador porque no lo necesita para insertar en BD.
+    await generarBorradorPostCierre(parseInt(ordenId));
+  } catch (facturaError) {
+    console.error(
+      `[orden.store] No se generó borrador automático para orden ${ordenId}:`,
+      facturaError.message
+    );
+    // NO relanzar: el cierre de la orden ya fue exitoso
+  }
+  // ────────────────────────────────────────────────────────────────────
+
+
+
     return { ordenId, vehiculoLiberado: vehiculoId, estadoFinal: "CERRADA" };
   } catch (error) {
     if (transaction) await transaction.rollback();
@@ -538,6 +578,7 @@ module.exports = {
   actualizarRutaTransito,
   registrarEventoBitacora,
   finalizarEntrega,
+  generarBorradorPostCierre,
   optenerOrdenPendiente,
   optenerOrdenPlanificada,
   optenerOrdenPiloto,
