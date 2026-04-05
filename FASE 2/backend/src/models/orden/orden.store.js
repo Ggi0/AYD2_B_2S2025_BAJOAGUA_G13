@@ -137,7 +137,7 @@ async function optenerOrdenPendiente() {
   const result = await pool.request().query(
     `select id, 
               numero_orden,
-              (select nombre from usuarios where ordenes.cliente_id = usuarios.id), 
+              (select nombre from usuarios where ordenes.cliente_id = usuarios.id) AS nombre_cliente, 
               origen, 
               destino, 
               tipo_mercancia, 
