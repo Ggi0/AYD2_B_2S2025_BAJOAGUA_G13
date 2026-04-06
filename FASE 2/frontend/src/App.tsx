@@ -16,6 +16,7 @@ import ProtectedRoute from './components/auth/ProtectedRoute';
 import FacturacionPage from './pages/finanzas/FacturacionPage';
 import PagosPage from './pages/finanzas/PagosPage';
 import DashboardGerencial from './pages/gerencia/DashboardGerencial';
+import BitacoraOrdenes from './pages/gerencia/BitacoraOrdenes';
 import DashboardFinanzas from './pages/finanzas/DashboardFinanzas';
 import CobrosPage from './pages/finanzas/CobrosPage';
 import { AuthProvider } from './context/AuthContext';
@@ -263,6 +264,14 @@ function App() {
             element={
               <ProtectedRoute allowedRoles={['gerencia', 'admin']}>
                 <DashboardGerencial />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/Gerencia/bitacora"
+            element={
+              <ProtectedRoute allowedRoles={['gerencia', 'admin']}>
+                <BitacoraOrdenes />
               </ProtectedRoute>
             }
           />

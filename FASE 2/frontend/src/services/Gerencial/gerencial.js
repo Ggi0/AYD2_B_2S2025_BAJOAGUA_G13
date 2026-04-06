@@ -30,3 +30,19 @@ export const getKPIs = async (params = {}) => {
 export const getAlertas = async () => {
   return apiService["request"]("/gerencial/alertas", { method: "GET" });
 };
+
+/**
+ * Eventos/Bitácora de órdenes con anomalías detectadas
+ * GET /api/gerencial/eventos?desde=YYYY-MM-DD&hasta=YYYY-MM-DD&sede=guatemala&tipo_evento=CRITICO
+ * @param {Object} params - { desde, hasta, sede, tipo_evento, limite }
+ */
+export const getEventosOrdenes = async (params = {}) => {
+  const query = new URLSearchParams();
+  if (params.desde) query.append("desde", params.desde);
+  if (params.hasta) query.append("hasta", params.hasta);
+  if (params.sede) query.append("sede", params.sede);
+  if (params.tipo_evento) query.append("tipo_evento", params.tipo_evento);
+  if (params.limite) query.append("limite", params.limite);
+  const url = `/gerencial/eventos${query.toString() ? "?" + query.toString() : ""}`;
+  return apiService["request"](url, { method: "GET" });
+};

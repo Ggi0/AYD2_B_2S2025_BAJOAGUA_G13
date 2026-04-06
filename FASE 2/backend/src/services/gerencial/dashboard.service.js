@@ -381,10 +381,109 @@ async function getAlertas({ desde, hasta }) {
   };
 }
 
+// 3) Eventos de órdenes: bitácora de anomalías detectadas en la operación.
+async function getEventosOrdenes({ desde, hasta, sede, tipo_evento, limite = 100 }) {
+  try {
+    const startDate = parseDateInput(desde);
+    const endDate = parseDateInput(hasta || desde || new Date());
+    const limiteNumero = Math.min(Number(limite) || 100, 1000);
+
+    const pool = await getConnection();
+
+    let eventosQuery = `
+      SELECT TOP ${limiteNumero}
+        oe.id AS evento_id,
+        oe.orden_id,
+        oe.piloto_id,
+        oe.tipo_evento,
+        oe.descripcion,
+        oe.genera_retraso,
+        oe.fecha_hora,
+        o.numero_orden,
+        o.origen,
+        o.destino,
+        ISNULL(u.nombre, 'No asignado') AS piloto_nombre,
+        ISNULL(cli.nombre, 'N/A') AS cliente_nombre
+      FROM orden_eventos oe
+      INNER JOIN ordenes o ON o.id = oe.orden_id
+      LEFT JOIN usuarios u ON u.id = oe.piloto_id
+      LEFT JOIN usuarios cli ON cli.id = o.cliente_id
+      WHERE CAST(oe.fecha_hora AS DATE) BETWEEN @desde AND @hasta
+    `;
+
+    const request = pool.request()
+      .input("desde", sql.Date, startDate)
+      .input("hasta", sql.Date, endDate);
+
+    // Filtro de tipo evento
+    if (tipo_evento && typeof tipo_evento === 'string' && ['NORMAL', 'INCIDENTE', 'RETRASO', 'CRITICO'].includes(tipo_evento.toUpperCase())) {
+      eventosQuery += ` AND oe.tipo_evento = @tipo_evento`;
+      request.input("tipo_evento", sql.NVarChar(15), tipo_evento.toUpperCase());
+    }
+
+    // Filtro de sede (opcional)
+    if (sede && typeof sede === 'string' && sede.trim()) {
+      try {
+        const selectedSede = normalizeSede(sede);
+        const sedeCase = buildSedeCaseForOrders("o");
+        eventosQuery += ` AND (${sedeCase}) = @sede`;
+        request.input("sede", sql.NVarChar(50), selectedSede);
+      } catch (sedeError) {
+        // Si falla la normalización de sede, ignorar el filtro de sede
+        console.warn("[getEventosOrdenes] Sede inválida, ignorando:", sede);
+      }
+    }
+
+    eventosQuery += ` ORDER BY oe.fecha_hora DESC`;
+
+    console.log("[getEventosOrdenes] Query:", eventosQuery);
+    const result = await request.query(eventosQuery);
+
+    const eventos = result.recordset.map((row) => ({
+      eventoId: row.evento_id,
+      ordenId: row.orden_id,
+      numeroOrden: row.numero_orden,
+      pilotoId: row.piloto_id,
+      pilotoNombre: row.piloto_nombre || "No asignado",
+      clienteNombre: row.cliente_nombre || "N/A",
+      tipoEvento: row.tipo_evento,
+      descripcion: row.descripcion,
+      generaRetraso: row.genera_retraso === 1,
+      fechaHora: new Date(row.fecha_hora).toISOString(),
+      origen: row.origen,
+      destino: row.destino,
+      ruta: `${row.origen} → ${row.destino}`,
+    }));
+
+    const conteoTipos = {
+      NORMAL: eventos.filter(e => e.tipoEvento === 'NORMAL').length,
+      INCIDENTE: eventos.filter(e => e.tipoEvento === 'INCIDENTE').length,
+      RETRASO: eventos.filter(e => e.tipoEvento === 'RETRASO').length,
+      CRITICO: eventos.filter(e => e.tipoEvento === 'CRITICO').length,
+    };
+
+    return {
+      desde: startDate.toISOString().slice(0, 10),
+      hasta: endDate.toISOString().slice(0, 10),
+      sede: sede || "TODAS",
+      tipoEvento: tipo_evento || "TODOS",
+      total: eventos.length,
+      conteoTipos,
+      modoActualizacion: "TIEMPO_REAL",
+      actualizadoEn: new Date().toISOString(),
+      eventos,
+    };
+  } catch (error) {
+    console.error("[getEventosOrdenes] Error:", error);
+    throw new Error(`Error al obtener eventos: ${error.message}`);
+  }
+}
+
 module.exports = {
   getCorteDiario,
   getKpis,
   getAlertas,
+  getEventosOrdenes,
   __testables: {
     parseDateInput,
     normalizeSede,
