@@ -258,7 +258,7 @@ function App() {
         } />
 
 
-<Route
+          <Route
             path="/Gerencia/dashboad"
             element={
               <ProtectedRoute allowedRoles={["finanzas", "gerencia", "admin"]}>

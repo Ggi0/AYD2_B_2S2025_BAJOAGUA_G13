@@ -55,10 +55,10 @@ const Login: React.FC = () => {
         navigate('/piloto/dashboard');
       } else if (userRole === 'patio') {
         navigate('/patio/dashboard');
-      } else if (userRole === 'finanzas' || userRole === 'gerencia') {
+      } else if (userRole === 'finanzas') {
         navigate('/finanzas/dashboard');
-      } else if (userRole === 'admin') {
-        navigate('/admin/dashboard');
+      } else if (userRole === 'gerencia') {
+        navigate('/Gerencia/dashboad');
       } else {
         navigate('/panel');
       } 
