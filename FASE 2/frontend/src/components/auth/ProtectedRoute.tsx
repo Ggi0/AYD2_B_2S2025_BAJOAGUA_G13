@@ -36,6 +36,8 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles 
         return <Navigate to="/logistico/dashboard" replace />;
       } else if (userRole === 'piloto') {
         return <Navigate to="/piloto/dashboard" replace />;
+      } else if (userRole === 'operativo') {
+        return <Navigate to="/operativo/dashboard" replace />;
       } else if (userRole === 'patio') {
         return <Navigate to="/patio/dashboard" replace />;
       } else if (userRole === 'finanzas') {

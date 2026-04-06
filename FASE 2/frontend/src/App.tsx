@@ -18,6 +18,7 @@ import PagosPage from './pages/finanzas/PagosPage';
 import DashboardGerencial from './pages/finanzas/DashboardGerencial';
 import { AuthProvider } from './context/AuthContext';
 import ClienteOrdenesPage from "./pages/client/ClientOrdenesPage";
+import OperativoPrincipal from './pages/Operativo/OperativoPrincipal';
 
 // Imports de Piloto
 import PrincipalPiloto from "./pages/piloto/PrincipalPiloto";
@@ -91,12 +92,24 @@ function App() {
             }
           />
 
-          {/* ── Logístico ── */}
+          {/* ── Operativo ── */}
+          <Route
+            path="/operativo/dashboard"
+            element={
+              <ProtectedRoute
+                allowedRoles={[ "operativo" ]}
+              >
+                <OperativoPrincipal />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* ── Logístico ── */} 
           <Route
             path="/logistico/dashboard"
             element={
               <ProtectedRoute
-                allowedRoles={["logistic", "logistico", "operativo", "admin"]}
+                allowedRoles={["logistic", "logistico",  "admin"]}
               >
                 <PrincipalLogistico />
               </ProtectedRoute>
@@ -106,7 +119,7 @@ function App() {
             path="/logistico/contratos"
             element={
               <ProtectedRoute
-                allowedRoles={["logistic", "logistico", "operativo", "admin"]}
+                allowedRoles={["logistic", "logistico",  "admin"]}
               >
                 <ContratosList />
               </ProtectedRoute>
@@ -116,7 +129,7 @@ function App() {
             path="/logistico/contratos/nuevo"
             element={
               <ProtectedRoute
-                allowedRoles={["logistic", "logistico", "operativo", "admin"]}
+                allowedRoles={["logistic", "logistico",  "admin"]}
               >
                 <ContratoForm />
               </ProtectedRoute>
@@ -126,7 +139,7 @@ function App() {
             path="/logistico/contratos/:id"
             element={
               <ProtectedRoute
-                allowedRoles={["logistic", "logistico", "operativo", "admin"]}
+                allowedRoles={["logistic", "logistico",  "admin"]}
               >
                 <ContratoDetail />
               </ProtectedRoute>
@@ -136,7 +149,7 @@ function App() {
             path="/logistico/contratos/:id/editar"
             element={
               <ProtectedRoute
-                allowedRoles={["logistic", "logistico", "operativo", "admin"]}
+                allowedRoles={["logistic", "logistico",  "admin"]}
               >
                 <ContratoForm />
               </ProtectedRoute>
@@ -146,7 +159,7 @@ function App() {
             path="/logistico/ordenes"
             element={
               <ProtectedRoute
-                allowedRoles={["logistic", "logistico", "operativo", "admin"]}
+                allowedRoles={["logistic", "logistico",  "admin"]}
               >
                 <PrincipalLogistico />
               </ProtectedRoute>
@@ -156,7 +169,7 @@ function App() {
             path="/logistico/asignaciones"
             element={
               <ProtectedRoute
-                allowedRoles={["logistic", "logistico", "operativo", "admin"]}
+                allowedRoles={["logistic", "logistico",  "admin"]}
               >
                 <PrincipalLogistico />
               </ProtectedRoute>
@@ -166,7 +179,7 @@ function App() {
             path="/logistico/clientes"
             element={
               <ProtectedRoute
-                allowedRoles={["logistic", "logistico", "operativo", "admin"]}
+                allowedRoles={["logistic", "logistico",  "admin"]}
               >
                 <ClientesList />
               </ProtectedRoute>
@@ -176,7 +189,7 @@ function App() {
             path="/logistico/reportes"
             element={
               <ProtectedRoute
-                allowedRoles={["logistic", "logistico", "operativo", "admin"]}
+                allowedRoles={["logistic", "logistico",  "admin"]}
               >
                 <PrincipalLogistico />
               </ProtectedRoute>
@@ -186,7 +199,7 @@ function App() {
             path="/logistico/rutas"
             element={
               <ProtectedRoute
-                allowedRoles={["logistic", "logistico", "operativo", "admin"]}
+                allowedRoles={["logistic", "logistico",  "admin"]}
               >
                 <PrincipalLogistico />
               </ProtectedRoute>
@@ -196,7 +209,7 @@ function App() {
             path="/logistico/vehiculos"
             element={
               <ProtectedRoute
-                allowedRoles={["logistic", "logistico", "operativo", "admin"]}
+                allowedRoles={["logistic", "logistico",  "admin"]}
               >
                 <PrincipalLogistico />
               </ProtectedRoute>
@@ -206,7 +219,7 @@ function App() {
             path="/logistico/seguimiento"
             element={
               <ProtectedRoute
-                allowedRoles={["logistic", "logistico", "operativo", "admin"]}
+                allowedRoles={["logistic", "logistico",  "admin"]}
               >
                 <PrincipalLogistico />
               </ProtectedRoute>
