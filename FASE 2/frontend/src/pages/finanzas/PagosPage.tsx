@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { getPagos, registrarPago } from "../../services/facturacion/pagos";
 import FinanzasHeader from "../../components/finanzas/FinanzasHeader";
 import FinanzasMenu from "../../components/finanzas/FinanzasMenu";
-
+ 
 type Pago = {
   id: number;
   factura_id: number;

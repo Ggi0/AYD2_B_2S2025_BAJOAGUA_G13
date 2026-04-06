@@ -16,7 +16,7 @@ export type ApiResponse<T = any> = {
 export type LoginPayload = {
   email: string;
   password: string;
-};
+}; 
 
 export type RegisterPayload = {
   nit: string;

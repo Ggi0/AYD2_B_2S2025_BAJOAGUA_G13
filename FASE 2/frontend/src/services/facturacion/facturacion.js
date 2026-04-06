@@ -7,7 +7,7 @@ import apiService from "../api";
  */
 export const getFacturas = async (params = {}) => {
   const query = new URLSearchParams();
-  if (params.estado) query.append("estado", params.estado);
+  if (params.estado) query.append("estado", params.estado); 
   if (params.cliente_id) query.append("cliente_id", params.cliente_id);
   if (params.fecha_inicio) query.append("fecha_inicio", params.fecha_inicio);
   if (params.fecha_fin) query.append("fecha_fin", params.fecha_fin);

@@ -11,7 +11,7 @@ const {
   valSalidaPatio,
   valInicioTransito,
   valEventosTransito,
-  valFinalizarEntrega,
+  valFinalizarEntrega, 
 } = require("../../middlewares/orden/orden.validation.middleware");
 
 const router = express.Router();
