@@ -11,7 +11,7 @@ const {
   valSalidaPatio,
   valInicioTransito,
   valEventosTransito,
-  valFinalizarEntrega,
+  valFinalizarEntrega, 
 } = require("../../middlewares/orden/orden.validation.middleware");
 
 const router = express.Router();
@@ -31,6 +31,7 @@ router.put("/:id", valAsignacionRecursos, ordenController.asignarRecursos);
 
 router.get("/vehiculos", ordenController.getVehiculos);
 router.get("/pilotos", ordenController.getPilotos);
+router.get("/rutasAutorizada/:id", ordenController.getRutasAutorizadas);
 
 // Rutas destinadas a la logistica de la orden
 router.put(

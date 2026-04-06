@@ -1,4 +1,3 @@
-// src/App.tsx
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Principal from './pages/Principal/Principal';
 import TiposRegistro from './pages/Registro/TiposRegistro';
@@ -16,18 +15,25 @@ import ClientesList from './pages/logistico/ClientesList';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import FacturacionPage from './pages/finanzas/FacturacionPage';
 import PagosPage from './pages/finanzas/PagosPage';
-import DashboardGerencial from './pages/finanzas/DashboardGerencial';
+import DashboardGerencial from './pages/gerencia/DashboardGerencial';
+import DashboardFinanzas from './pages/finanzas/DashboardFinanzas';
+import CobrosPage from './pages/finanzas/CobrosPage';
 import { AuthProvider } from './context/AuthContext';
+import ClienteOrdenesPage from "./pages/client/ClientOrdenesPage";
+import OperativoPrincipal from './pages/Operativo/OperativoPrincipal';
 
 // Imports de Piloto
-import PrincipalPiloto from './pages/piloto/PrincipalPiloto';
-import IniciarViaje from './pages/piloto/IniciarViaje';
-import FinalizarEntrega from './pages/piloto/FinalizarEntrega';
-import ReportarEvento from './pages/piloto/ReportarEvento';
-import OrdenDetalle from './pages/piloto/OrdenDetalle';
-import MisOrdenes from './pages/piloto/MisOrdenes';
-import EnTransito from './pages/piloto/EnTransito';
-import Historial from './pages/piloto/Historial';
+import PrincipalPiloto from "./pages/piloto/PrincipalPiloto";
+import IniciarViaje from "./pages/piloto/IniciarViaje";
+import FinalizarEntrega from "./pages/piloto/FinalizarEntrega";
+import ReportarEvento from "./pages/piloto/ReportarEvento";
+import OrdenDetalle from "./pages/piloto/OrdenDetalle";
+import MisOrdenes from "./pages/piloto/MisOrdenes";
+import EnTransito from "./pages/piloto/EnTransito";
+import Historial from "./pages/piloto/Historial";
+
+// Import de Patio (solo el dashboard principal)
+import PrincipalPatio from './pages/patio/PrincipalPatio';
 
 function App() {
   return (
@@ -42,7 +48,7 @@ function App() {
           <Route
             path="/client/dashboard"
             element={
-              <ProtectedRoute allowedRoles={['client', 'cliente']}>
+              <ProtectedRoute allowedRoles={["client", "cliente"]}>
                 <PrincipalClient />
               </ProtectedRoute>
             }
@@ -50,7 +56,7 @@ function App() {
           <Route
             path="/client/contracts"
             element={
-              <ProtectedRoute allowedRoles={['client', 'cliente']}>
+              <ProtectedRoute allowedRoles={["client", "cliente"]}>
                 <ClientContracts />
               </ProtectedRoute>
             }
@@ -58,7 +64,7 @@ function App() {
           <Route
             path="/client/contracts/:id"
             element={
-              <ProtectedRoute allowedRoles={['client', 'cliente']}>
+              <ProtectedRoute allowedRoles={["client", "cliente"]}>
                 <ClientContractDetail />
               </ProtectedRoute>
             }
@@ -66,20 +72,15 @@ function App() {
           <Route
             path="/client/orders"
             element={
-              <ProtectedRoute allowedRoles={['client', 'cliente']}>
-                <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-                  <div className="text-center">
-                    <h2 className="text-xl font-semibold text-gray-700">Órdenes de Servicio</h2>
-                    <p className="text-gray-500 mt-2">Próximamente disponible</p>
-                  </div>
-                </div>
+              <ProtectedRoute allowedRoles={["client", "cliente"]}>
+                <ClienteOrdenesPage />
               </ProtectedRoute>
             }
           />
           <Route
             path="/client/invoices"
             element={
-              <ProtectedRoute allowedRoles={['client', 'cliente']}>
+              <ProtectedRoute allowedRoles={["client", "cliente"]}>
                 <ClienteFacturasPage />
               </ProtectedRoute>
             }
@@ -87,17 +88,31 @@ function App() {
           <Route
             path="/client/payments"
             element={
-              <ProtectedRoute allowedRoles={['client', 'cliente']}>
+              <ProtectedRoute allowedRoles={["client", "cliente"]}>
                 <ClientePagosPage />
               </ProtectedRoute>
             }
           />
 
-          {/* ── Logístico ── */}
+          {/* ── Operativo ── */}
+          <Route
+            path="/operativo/dashboard"
+            element={
+              <ProtectedRoute
+                allowedRoles={[ "operativo" ]}
+              >
+                <OperativoPrincipal />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* ── Logístico ── */} 
           <Route
             path="/logistico/dashboard"
             element={
-              <ProtectedRoute allowedRoles={['logistic', 'logistico', 'operativo', 'admin']}>
+              <ProtectedRoute
+                allowedRoles={["logistic", "logistico",  "admin"]}
+              >
                 <PrincipalLogistico />
               </ProtectedRoute>
             }
@@ -105,7 +120,9 @@ function App() {
           <Route
             path="/logistico/contratos"
             element={
-              <ProtectedRoute allowedRoles={['logistic', 'logistico', 'operativo', 'admin']}>
+              <ProtectedRoute
+                allowedRoles={["logistic", "logistico",  "admin"]}
+              >
                 <ContratosList />
               </ProtectedRoute>
             }
@@ -113,7 +130,9 @@ function App() {
           <Route
             path="/logistico/contratos/nuevo"
             element={
-              <ProtectedRoute allowedRoles={['logistic', 'logistico', 'operativo', 'admin']}>
+              <ProtectedRoute
+                allowedRoles={["logistic", "logistico",  "admin"]}
+              >
                 <ContratoForm />
               </ProtectedRoute>
             }
@@ -121,7 +140,9 @@ function App() {
           <Route
             path="/logistico/contratos/:id"
             element={
-              <ProtectedRoute allowedRoles={['logistic', 'logistico', 'operativo', 'admin']}>
+              <ProtectedRoute
+                allowedRoles={["logistic", "logistico",  "admin"]}
+              >
                 <ContratoDetail />
               </ProtectedRoute>
             }
@@ -129,7 +150,9 @@ function App() {
           <Route
             path="/logistico/contratos/:id/editar"
             element={
-              <ProtectedRoute allowedRoles={['logistic', 'logistico', 'operativo', 'admin']}>
+              <ProtectedRoute
+                allowedRoles={["logistic", "logistico",  "admin"]}
+              >
                 <ContratoForm />
               </ProtectedRoute>
             }
@@ -137,7 +160,9 @@ function App() {
           <Route
             path="/logistico/ordenes"
             element={
-              <ProtectedRoute allowedRoles={['logistic', 'logistico', 'operativo', 'admin']}>
+              <ProtectedRoute
+                allowedRoles={["logistic", "logistico",  "admin"]}
+              >
                 <PrincipalLogistico />
               </ProtectedRoute>
             }
@@ -145,7 +170,9 @@ function App() {
           <Route
             path="/logistico/asignaciones"
             element={
-              <ProtectedRoute allowedRoles={['logistic', 'logistico', 'operativo', 'admin']}>
+              <ProtectedRoute
+                allowedRoles={["logistic", "logistico",  "admin"]}
+              >
                 <PrincipalLogistico />
               </ProtectedRoute>
             }
@@ -153,7 +180,9 @@ function App() {
           <Route
             path="/logistico/clientes"
             element={
-              <ProtectedRoute allowedRoles={['logistic', 'logistico', 'operativo', 'admin']}>
+              <ProtectedRoute
+                allowedRoles={["logistic", "logistico",  "admin"]}
+              >
                 <ClientesList />
               </ProtectedRoute>
             }
@@ -161,7 +190,9 @@ function App() {
           <Route
             path="/logistico/reportes"
             element={
-              <ProtectedRoute allowedRoles={['logistic', 'logistico', 'operativo', 'admin']}>
+              <ProtectedRoute
+                allowedRoles={["logistic", "logistico",  "admin"]}
+              >
                 <PrincipalLogistico />
               </ProtectedRoute>
             }
@@ -169,7 +200,9 @@ function App() {
           <Route
             path="/logistico/rutas"
             element={
-              <ProtectedRoute allowedRoles={['logistic', 'logistico', 'operativo', 'admin']}>
+              <ProtectedRoute
+                allowedRoles={["logistic", "logistico",  "admin"]}
+              >
                 <PrincipalLogistico />
               </ProtectedRoute>
             }
@@ -177,7 +210,9 @@ function App() {
           <Route
             path="/logistico/vehiculos"
             element={
-              <ProtectedRoute allowedRoles={['logistic', 'logistico', 'operativo', 'admin']}>
+              <ProtectedRoute
+                allowedRoles={["logistic", "logistico",  "admin"]}
+              >
                 <PrincipalLogistico />
               </ProtectedRoute>
             }
@@ -185,7 +220,9 @@ function App() {
           <Route
             path="/logistico/seguimiento"
             element={
-              <ProtectedRoute allowedRoles={['logistic', 'logistico', 'operativo', 'admin']}>
+              <ProtectedRoute
+                allowedRoles={["logistic", "logistico",  "admin"]}
+              >
                 <PrincipalLogistico />
               </ProtectedRoute>
             }
@@ -195,7 +232,7 @@ function App() {
           <Route
             path="/finanzas/facturacion"
             element={
-              <ProtectedRoute allowedRoles={['finanzas', 'gerencia', 'admin']}>
+              <ProtectedRoute allowedRoles={["finanzas", "gerencia", "admin"]}>
                 <FacturacionPage />
               </ProtectedRoute>
             }
@@ -203,25 +240,40 @@ function App() {
           <Route
             path="/finanzas/pagos"
             element={
-              <ProtectedRoute allowedRoles={['finanzas', 'gerencia', 'admin']}>
+              <ProtectedRoute allowedRoles={["finanzas", "gerencia", "admin"]}>
                 <PagosPage />
               </ProtectedRoute>
             }
           />
+
+        <Route path="/finanzas/dashboard" element={
+          <ProtectedRoute allowedRoles={['finanzas', 'gerencia', 'admin']}>
+            <DashboardFinanzas />
+          </ProtectedRoute>
+        } />
+        <Route path="/finanzas/cobros" element={
+          <ProtectedRoute allowedRoles={['finanzas', 'gerencia', 'admin']}>
+            <CobrosPage />
+          </ProtectedRoute>
+        } />
+
+
           <Route
-            path="/finanzas/dashboard"
+            path="/Gerencia/dashboad"
             element={
-              <ProtectedRoute allowedRoles={['finanzas', 'gerencia', 'admin']}>
+              <ProtectedRoute allowedRoles={['gerencia', 'admin']}>
                 <DashboardGerencial />
               </ProtectedRoute>
             }
           />
 
+
+
           {/* ── Piloto ── */}
           <Route
             path="/piloto/dashboard"
             element={
-              <ProtectedRoute allowedRoles={['piloto']}>
+              <ProtectedRoute allowedRoles={["piloto"]}>
                 <PrincipalPiloto />
               </ProtectedRoute>
             }
@@ -229,7 +281,7 @@ function App() {
           <Route
             path="/piloto/ordenes"
             element={
-              <ProtectedRoute allowedRoles={['piloto']}>
+              <ProtectedRoute allowedRoles={["piloto"]}>
                 <MisOrdenes />
               </ProtectedRoute>
             }
@@ -237,7 +289,7 @@ function App() {
           <Route
             path="/piloto/en-transito"
             element={
-              <ProtectedRoute allowedRoles={['piloto']}>
+              <ProtectedRoute allowedRoles={["piloto"]}>
                 <EnTransito />
               </ProtectedRoute>
             }
@@ -245,7 +297,7 @@ function App() {
           <Route
             path="/piloto/historial"
             element={
-              <ProtectedRoute allowedRoles={['piloto']}>
+              <ProtectedRoute allowedRoles={["piloto"]}>
                 <Historial />
               </ProtectedRoute>
             }
@@ -253,7 +305,7 @@ function App() {
           <Route
             path="/piloto/orden/:id"
             element={
-              <ProtectedRoute allowedRoles={['piloto']}>
+              <ProtectedRoute allowedRoles={["piloto"]}>
                 <OrdenDetalle />
               </ProtectedRoute>
             }
@@ -261,7 +313,7 @@ function App() {
           <Route
             path="/piloto/orden/:id/iniciar-viaje"
             element={
-              <ProtectedRoute allowedRoles={['piloto']}>
+              <ProtectedRoute allowedRoles={["piloto"]}>
                 <IniciarViaje />
               </ProtectedRoute>
             }
@@ -269,7 +321,7 @@ function App() {
           <Route
             path="/piloto/orden/:id/finalizar"
             element={
-              <ProtectedRoute allowedRoles={['piloto']}>
+              <ProtectedRoute allowedRoles={["piloto"]}>
                 <FinalizarEntrega />
               </ProtectedRoute>
             }
@@ -277,8 +329,18 @@ function App() {
           <Route
             path="/piloto/orden/:id/evento"
             element={
-              <ProtectedRoute allowedRoles={['piloto']}>
+              <ProtectedRoute allowedRoles={["piloto"]}>
                 <ReportarEvento />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* ── Patio (solo dashboard principal) ── */}
+          <Route
+            path="/patio/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={['patio']}>
+                <PrincipalPatio />
               </ProtectedRoute>
             }
           />
@@ -290,9 +352,16 @@ function App() {
               <div className="min-h-screen bg-gray-50 flex items-center justify-center">
                 <div className="text-center">
                   <h1 className="text-6xl font-bold text-gray-300">404</h1>
-                  <h2 className="text-xl font-semibold text-gray-700 mt-4">Página no encontrada</h2>
-                  <p className="text-gray-500 mt-2">La página que buscas no existe</p>
-                  <a href="/" className="mt-6 inline-block px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700">
+                  <h2 className="text-xl font-semibold text-gray-700 mt-4">
+                    Página no encontrada
+                  </h2>
+                  <p className="text-gray-500 mt-2">
+                    La página que buscas no existe
+                  </p>
+                  <a
+                    href="/"
+                    className="mt-6 inline-block px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700"
+                  >
                     Volver al inicio
                   </a>
                 </div>

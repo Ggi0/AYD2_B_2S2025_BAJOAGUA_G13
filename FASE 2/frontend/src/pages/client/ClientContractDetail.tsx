@@ -12,7 +12,8 @@ const ClientContractDetail: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { contratoActual, obtenerContrato, loading, error, limpiarError } = useContratos();
+  const { contratoActual: contratoActualOriginal, obtenerContrato, loading, error, limpiarError } = useContratos();
+  const contratoActual = contratoActualOriginal as any;
 
   const userName = user?.nombres && user?.apellidos 
     ? `${user.nombres} ${user.apellidos}`

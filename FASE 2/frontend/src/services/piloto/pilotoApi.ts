@@ -21,14 +21,6 @@ export type EventoBitacora = {
   genera_retraso?: boolean;
 };
 
-export type SalidaPatioPayload = {
-  codigo_orden: string;
-  peso_real: number;
-  asegurada: boolean;
-  estibada: boolean;
-};
-
-// Versión alternativa usando Record<string, string>
 const fetchWithAuth = async (endpoint: string, options: RequestInit = {}) => {
   const token = apiService.getToken();
   const baseUrl = apiService.getBaseUrl();
@@ -41,7 +33,6 @@ const fetchWithAuth = async (endpoint: string, options: RequestInit = {}) => {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  // Combinar con headers existentes de options
   if (options.headers) {
     const existingHeaders = options.headers as Record<string, string>;
     Object.assign(headers, existingHeaders);
@@ -62,6 +53,7 @@ const fetchWithAuth = async (endpoint: string, options: RequestInit = {}) => {
 };
 
 export const pilotoApi = {
+  // Obtener órdenes asignadas al piloto
   getMisOrdenes: async (pilotoId: number): Promise<OrdenAsignada[]> => {
     const response = await fetchWithAuth(`/orden/piloto/${pilotoId}`, {
       method: 'GET',
@@ -69,6 +61,7 @@ export const pilotoApi = {
     return response.data;
   },
 
+  // Iniciar tránsito - SOLO el ID de la orden, sin payload adicional
   iniciarTransito: async (ordenId: number): Promise<any> => {
     const response = await fetchWithAuth(`/orden/trasito/inicio/${ordenId}`, {
       method: 'PUT',
@@ -76,6 +69,7 @@ export const pilotoApi = {
     return response.data;
   },
 
+  // Registrar evento en bitácora
   registrarEvento: async (payload: EventoBitacora): Promise<any> => {
     const response = await fetchWithAuth('/orden/eventos', {
       method: 'POST',
@@ -84,6 +78,7 @@ export const pilotoApi = {
     return response.data;
   },
 
+  // Finalizar entrega con evidencias
   finalizarEntrega: async (ordenId: number, evidencias: File[]): Promise<any> => {
     const token = apiService.getToken();
     const baseUrl = apiService.getBaseUrl();
@@ -107,31 +102,6 @@ export const pilotoApi = {
     const data = await response.json();
     if (!response.ok) {
       throw new Error(data?.mensaje || 'Error al finalizar la entrega');
-    }
-    
-    return data;
-  },
-
-  registrarSalidaPatio: async (ordenId: number, payload: SalidaPatioPayload): Promise<any> => {
-    const token = apiService.getToken();
-    const baseUrl = apiService.getBaseUrl();
-    
-    const headers: HeadersInit = {
-      'Content-Type': 'application/json',
-    };
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-    
-    const response = await fetch(`${baseUrl}/orden/trasito/inicio/${ordenId}`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(payload),
-    });
-    
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data?.mensaje || 'Error al registrar salida de patio');
     }
     
     return data;

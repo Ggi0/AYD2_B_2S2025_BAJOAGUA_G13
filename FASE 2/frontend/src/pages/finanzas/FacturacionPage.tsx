@@ -1,211 +1,296 @@
 // src/pages/finanzas/FacturacionPage.tsx
-import React, { useEffect, useState } from "react";
-import { getFacturas, certificarFactura } from "../../services/facturacion/facturacion";
+// Reemplaza el archivo existente
+import React, { useEffect, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
+import FinanzasHeader from "../../components/finanzas/FinanzasHeader";
+import FinanzasMenu from "../../components/finanzas/FinanzasMenu";
+import FacturaBadge from "../../components/finanzas/FacturaBadge";
+import FacturaModal from "../../components/finanzas/FacturaModal";
+import PagoModal from "../../components/finanzas/PagoModal";
+import {
+  getFacturas,
+  validarFactura,
+  certificarFactura,
+  getCobros,
+  registrarPago,
+} from "../../services/facturacion/facturacion";
+type Factura = any;
+type CuentaPorCobrar = any;
+type RegistrarPagoPayload = any;
+import "../finanzas/finanzas.css";
 
-type Factura = {
-  id: number;
-  numero_factura?: string;
-  cliente_nombre?: string;
-  cliente_nit?: string;
-  orden_id?: number;
-  monto_base?: number;
-  descuento?: number;
-  iva?: number;
-  total?: number;
-  estado?: string; // BORRADOR | CERTIFICADA | ANULADA
-  uuid_autorizacion?: string;
-  fecha_emision?: string;
-  fecha_certificacion?: string;
-};
-
-const ESTADO_COLORS: Record<string, string> = {
-  BORRADOR: "bg-yellow-100 text-yellow-800 border border-yellow-300",
-  CERTIFICADA: "bg-green-100 text-green-800 border border-green-300",
-  ANULADA: "bg-red-100 text-red-800 border border-red-300",
-};
+const fmt = (n: number) =>
+  `Q ${(n ?? 0).toLocaleString("es-GT", { minimumFractionDigits: 2 })}`;
+const fmtDate = (s?: string) => (s ? new Date(s).toLocaleDateString("es-GT") : "—");
 
 const FacturacionPage: React.FC = () => {
-  const [facturas, setFacturas] = useState<Factura[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [filtroEstado, setFiltroEstado] = useState("");
-  const [certificando, setCertificando] = useState<number | null>(null);
-  const [selectedFactura, setSelectedFactura] = useState<Factura | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const navigate = useNavigate();
 
-  const fetchFacturas = async () => {
+  /* ── Estado ── */
+  const [facturas,    setFacturas]    = useState<Factura[]>([]);
+  const [loading,     setLoading]     = useState(true);
+  const [error,       setError]       = useState<string | null>(null);
+  const [success,     setSuccess]     = useState<string | null>(null);
+  const [cargando,    setCargando]    = useState(false);
+
+  /* Filtros */
+  const [filtroEstado,    setFiltroEstado]    = useState("");
+  const [filtroFechaDesde, setFiltroFechaDesde] = useState("");
+  const [filtroFechaHasta, setFiltroFechaHasta] = useState("");
+
+  /* Modales */
+  const [facturaDetalle, setFacturaDetalle] = useState<Factura | null>(null);
+  const [facturaPago,    setFacturaPago]    = useState<Factura | null>(null);
+  const [cxcPago,        setCxcPago]        = useState<CuentaPorCobrar | null>(null);
+
+  /* ── Carga ── */
+  const cargar = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await getFacturas({ estado: filtroEstado || undefined });
-      setFacturas(res.data || []);
-    } catch (e: any) {
-      setError(e.message || "Error al cargar facturas");
+      const res = await getFacturas({
+        estado:      filtroEstado      || undefined,
+        fecha_desde: filtroFechaDesde  || undefined,
+        fecha_hasta: filtroFechaHasta  || undefined,
+        limit:       100,
+      });
+      setFacturas(res.data?.facturas ?? res.data ?? []);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Error al cargar facturas");
     } finally {
       setLoading(false);
     }
+  }, [filtroEstado, filtroFechaDesde, filtroFechaHasta]);
+
+  useEffect(() => { cargar(); }, [cargar]);
+
+  /* ── Acciones ── */
+  const msgOk = (m: string) => {
+    setSuccess(m);
+    setTimeout(() => setSuccess(null), 5000);
   };
 
-  useEffect(() => {
-    fetchFacturas();
-  }, [filtroEstado]);
-
-  const handleCertificar = async (factura: Factura) => {
-    if (!window.confirm(`¿Certificar (FEL) la factura #${factura.numero_factura || factura.id}?`)) return;
-    setCertificando(factura.id);
-    setSuccessMsg(null);
+  const handleValidar = async (f: Factura) => {
+    setCargando(true);
+    setError(null);
     try {
-      await certificarFactura(factura.id);
-      setSuccessMsg(`Factura #${factura.numero_factura || factura.id} certificada exitosamente.`);
-      fetchFacturas();
-    } catch (e: any) {
-      setError(e.message || "Error al certificar factura");
+      const res = await validarFactura(f.id);
+      if (res.data?.resultado?.aprobada) {
+        msgOk(`Factura ${f.numero_factura} validada. Lista para certificación.`);
+      } else {
+        setError(`Validación rechazada: ${res.data?.resultado?.errores?.join(", ")}`);
+      }
+      setFacturaDetalle(null);
+      cargar();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Error al validar");
     } finally {
-      setCertificando(null);
+      setCargando(false);
     }
   };
 
-  const totalFacturado = facturas
+  const handleCertificar = async (f: Factura) => {
+    if (!window.confirm(`¿Certificar la factura ${f.numero_factura} ante la SAT?`)) return;
+    setCargando(true);
+    setError(null);
+    try {
+      await certificarFactura(f.id);
+      msgOk(`Factura ${f.numero_factura} certificada exitosamente. UUID generado.`);
+      setFacturaDetalle(null);
+      cargar();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Error al certificar");
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  const handleAbrirPago = async (f: Factura) => {
+    // Buscar la CXC asociada
+    try {
+      const res = await getCobros({ cliente_id: f.cliente_id });
+      const cuentas: CuentaPorCobrar[] = res.data?.cuentas ?? res.data ?? [];
+      const cxc = cuentas.find((c) => c.factura_id === f.id && c.estado_cobro !== "PAGADA");
+      if (!cxc) {
+        setError("No se encontró cuenta por cobrar pendiente para esta factura.");
+        return;
+      }
+      setFacturaPago(f);
+      setCxcPago(cxc);
+      setFacturaDetalle(null);
+    } catch {
+      setError("Error al obtener la cuenta por cobrar.");
+    }
+  };
+
+  const handleRegistrarPago = async (payload: RegistrarPagoPayload) => {
+    if (!facturaPago) return;
+    setCargando(true);
+    setError(null);
+    try {
+      await registrarPago(facturaPago.id, payload);
+      msgOk(`Pago de ${fmt(payload.monto_pagado)} registrado. Crédito del cliente liberado.`);
+      setFacturaPago(null);
+      setCxcPago(null);
+      cargar();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Error al registrar pago");
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  /* ── Totales para stats ── */
+  const borradores  = facturas.filter((f) => f.estado === "BORRADOR").length;
+  const validadas   = facturas.filter((f) => f.estado === "VALIDADA").length;
+  const certificadas = facturas.filter((f) => f.estado === "CERTIFICADA").length;
+  const totalCert   = facturas
     .filter((f) => f.estado === "CERTIFICADA")
-    .reduce((acc, f) => acc + (f.total || 0), 0);
+    .reduce((s, f) => s + f.total_factura, 0);
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-blue-900 text-white px-6 py-5 shadow-lg">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Facturación Electrónica (FEL)</h1>
-            <p className="text-blue-200 text-sm mt-1">Gestión y certificación de facturas</p>
+    <div className="fn-page">
+      <FinanzasHeader />
+      <FinanzasMenu />
+
+      <div className="fn-container">
+        <div className="fn-page-header">
+          <h1>Facturación Electrónica (FEL)</h1>
+          <p>Ciclo completo: borrador → validación → certificación SAT</p>
+        </div>
+
+        {success && <div className="fn-alert fn-alert-success">✓ {success}</div>}
+        {error   && <div className="fn-alert fn-alert-error">✕ {error}</div>}
+
+        {/* ── Stats ── */}
+        <div className="fn-stats-grid">
+          <div className="fn-stat-card fn-stat-amarillo">
+            <p className="stat-label">Borradores</p>
+            <p className="stat-value">{borradores}</p>
           </div>
-          <div className="bg-blue-800 rounded-xl px-5 py-3 text-right">
-            <p className="text-xs text-blue-300">Total certificado</p>
-            <p className="text-xl font-bold">Q {totalFacturado.toLocaleString("es-GT", { minimumFractionDigits: 2 })}</p>
+          <div className="fn-stat-card fn-stat-azul">
+            <p className="stat-label">Validadas</p>
+            <p className="stat-value">{validadas}</p>
+          </div>
+          <div className="fn-stat-card fn-stat-verde">
+            <p className="stat-label">Certificadas</p>
+            <p className="stat-value">{certificadas}</p>
+          </div>
+          <div className="fn-stat-card fn-stat-azul">
+            <p className="stat-label">Total certificado</p>
+            <p className="stat-value" style={{ fontSize: "1.2rem" }}>{fmt(totalCert)}</p>
           </div>
         </div>
-      </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Mensajes */}
-        {successMsg && (
-          <div className="mb-4 p-4 bg-green-50 border border-green-300 rounded-xl text-green-800 flex items-center gap-2">
-            <svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-            {successMsg}
-          </div>
-        )}
-        {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-300 rounded-xl text-red-800">
-            {error}
-          </div>
-        )}
+        {/* ── Ayuda: generar borrador desde orden ── */}
+        <div className="fn-alert fn-alert-info" style={{ alignItems: "center" }}>
+          ℹ️ Para generar un borrador desde una orden entregada, ingresa el ID de la orden:{"  "}
+          <GenerarBorradorInline onSuccess={(msg) => { msgOk(msg); cargar(); }} onError={setError} />
+        </div>
 
-        {/* Filtros */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-6 flex flex-wrap gap-4 items-center">
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Estado</label>
-            <select
-              value={filtroEstado}
-              onChange={(e) => setFiltroEstado(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-            >
+        {/* ── Filtros ── */}
+        <div className="fn-filtros">
+          <div className="fn-field">
+            <label>Estado</label>
+            <select className="fn-select" value={filtroEstado} onChange={(e) => setFiltroEstado(e.target.value)}>
               <option value="">Todos</option>
               <option value="BORRADOR">Borrador</option>
+              <option value="VALIDADA">Validada</option>
               <option value="CERTIFICADA">Certificada</option>
               <option value="ANULADA">Anulada</option>
             </select>
           </div>
-          <button
-            onClick={fetchFacturas}
-            className="ml-auto px-4 py-2 bg-blue-900 text-white rounded-lg text-sm font-semibold hover:bg-blue-800 transition"
-          >
+          <div className="fn-field">
+            <label>Desde</label>
+            <input className="fn-input" type="date" value={filtroFechaDesde} onChange={(e) => setFiltroFechaDesde(e.target.value)} />
+          </div>
+          <div className="fn-field">
+            <label>Hasta</label>
+            <input className="fn-input" type="date" value={filtroFechaHasta} onChange={(e) => setFiltroFechaHasta(e.target.value)} />
+          </div>
+          <button className="fn-btn fn-btn-ghost fn-btn-sm" onClick={cargar}>
             Actualizar
+          </button>
+          <button
+            className="fn-btn fn-btn-outline fn-btn-sm"
+            style={{ marginLeft: "auto" }}
+            onClick={() => navigate("/finanzas/cobros")}
+          >
+            Ver cobros →
           </button>
         </div>
 
-        {/* Cards resumen */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          {[
-            { label: "Borradores", estado: "BORRADOR", color: "yellow" },
-            { label: "Certificadas", estado: "CERTIFICADA", color: "green" },
-            { label: "Anuladas", estado: "ANULADA", color: "red" },
-          ].map(({ label, estado, color }) => (
-            <div key={estado} className={`bg-white rounded-2xl border shadow-sm p-5`}>
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">{label}</p>
-              <p className={`text-3xl font-bold mt-1 text-${color}-600`}>
-                {facturas.filter((f) => f.estado === estado).length}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        {/* Tabla */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        {/* ── Tabla ── */}
+        <div className="fn-panel">
           {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-700"></div>
-            </div>
+            <div className="fn-spinner" />
           ) : facturas.length === 0 ? (
-            <div className="text-center py-20 text-gray-400">
-              <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              No hay facturas registradas
+            <div className="fn-empty">
+              <span className="empty-icon">🧾</span>
+              <p>No hay facturas con los filtros seleccionados</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-100">
+            <div className="fn-table-wrap">
+              <table className="fn-table">
+                <thead>
                   <tr>
-                    {["# Factura", "Cliente", "NIT", "Orden", "Total (Q)", "Estado", "Fecha", "Acciones"].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                        {h}
-                      </th>
-                    ))}
+                    <th>N° Factura</th>
+                    <th>Cliente</th>
+                    <th>NIT</th>
+                    <th>Orden #</th>
+                    <th>Subtotal</th>
+                    <th>IVA</th>
+                    <th>Total</th>
+                    <th>Estado</th>
+                    <th>Emitida</th>
+                    <th>Acciones</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
+                <tbody>
                   {facturas.map((f) => (
-                    <tr key={f.id} className="hover:bg-gray-50 transition">
-                      <td className="px-4 py-3 font-mono font-semibold text-blue-900">
-                        {f.numero_factura || `#${f.id}`}
-                      </td>
-                      <td className="px-4 py-3 text-gray-700">{f.cliente_nombre || "—"}</td>
-                      <td className="px-4 py-3 text-gray-500 font-mono text-xs">{f.cliente_nit || "—"}</td>
-                      <td className="px-4 py-3 text-gray-500">#{f.orden_id || "—"}</td>
-                      <td className="px-4 py-3 font-semibold text-gray-800">
-                        Q {(f.total || 0).toLocaleString("es-GT", { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${ESTADO_COLORS[f.estado || ""] || "bg-gray-100 text-gray-600"}`}>
-                          {f.estado || "—"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-400 text-xs">
-                        {f.fecha_emision ? new Date(f.fecha_emision).toLocaleDateString("es-GT") : "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex gap-2">
+                    <tr key={f.id}>
+                      <td className="mono">{f.numero_factura}</td>
+                      <td>{f.cliente_nombre ?? f.nombre_cliente_facturacion}</td>
+                      <td className="mono">{f.nit_cliente}</td>
+                      <td>#{f.orden_id}</td>
+                      <td>{fmt(f.subtotal)}</td>
+                      <td>{fmt(f.iva)}</td>
+                      <td><strong>{fmt(f.total_factura)}</strong></td>
+                      <td><FacturaBadge estado={f.estado} /></td>
+                      <td>{fmtDate(f.fecha_emision)}</td>
+                      <td>
+                        <div className="fn-row-actions">
                           <button
-                            onClick={() => setSelectedFactura(f)}
-                            className="px-3 py-1 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-semibold transition"
+                            className="fn-btn fn-btn-ghost fn-btn-xs"
+                            onClick={() => setFacturaDetalle(f)}
                           >
                             Ver
                           </button>
                           {f.estado === "BORRADOR" && (
                             <button
-                              onClick={() => handleCertificar(f)}
-                              disabled={certificando === f.id}
-                              className="px-3 py-1 bg-blue-900 hover:bg-blue-800 text-white rounded-lg text-xs font-semibold transition disabled:opacity-60"
+                              className="fn-btn fn-btn-outline fn-btn-xs"
+                              onClick={() => handleValidar(f)}
+                              disabled={cargando}
                             >
-                              {certificando === f.id ? "..." : "Certificar FEL"}
+                              Validar
                             </button>
                           )}
-                          {f.estado === "CERTIFICADA" && f.uuid_autorizacion && (
-                            <span className="px-2 py-1 bg-green-50 text-green-700 rounded-lg text-xs font-mono">
-                              ✓ UUID
-                            </span>
+                          {f.estado === "VALIDADA" && (
+                            <button
+                              className="fn-btn fn-btn-success fn-btn-xs"
+                              onClick={() => handleCertificar(f)}
+                              disabled={cargando}
+                            >
+                              Certificar FEL
+                            </button>
+                          )}
+                          {f.estado === "CERTIFICADA" && (
+                            <button
+                              className="fn-btn fn-btn-primary fn-btn-xs"
+                              onClick={() => handleAbrirPago(f)}
+                            >
+                              Pago
+                            </button>
                           )}
                         </div>
                       </td>
@@ -218,72 +303,78 @@ const FacturacionPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal detalle */}
-      {selectedFactura && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
-            <div className="bg-blue-900 text-white px-6 py-4 rounded-t-2xl flex items-center justify-between">
-              <h2 className="font-bold text-lg">
-                Factura {selectedFactura.numero_factura || `#${selectedFactura.id}`}
-              </h2>
-              <button onClick={() => setSelectedFactura(null)} className="text-blue-200 hover:text-white transition">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="p-6 space-y-3 text-sm">
-              <Row label="Cliente" value={selectedFactura.cliente_nombre} />
-              <Row label="NIT" value={selectedFactura.cliente_nit} />
-              <Row label="Orden #" value={selectedFactura.orden_id} />
-              <Row label="Monto base" value={`Q ${(selectedFactura.monto_base || 0).toFixed(2)}`} />
-              <Row label="Descuento" value={`Q ${(selectedFactura.descuento || 0).toFixed(2)}`} />
-              <Row label="IVA (12%)" value={`Q ${(selectedFactura.iva || 0).toFixed(2)}`} />
-              <div className="border-t pt-3 flex justify-between font-bold text-base">
-                <span>Total</span>
-                <span className="text-blue-900">Q {(selectedFactura.total || 0).toFixed(2)}</span>
-              </div>
-              {selectedFactura.uuid_autorizacion && (
-                <div className="bg-green-50 border border-green-200 rounded-xl p-3 mt-2">
-                  <p className="text-xs text-green-600 font-semibold mb-1">UUID de Autorización SAT</p>
-                  <p className="font-mono text-xs text-green-800 break-all">{selectedFactura.uuid_autorizacion}</p>
-                </div>
-              )}
-              <div className="flex justify-between text-xs text-gray-400 mt-2">
-                <span>Emitida: {selectedFactura.fecha_emision ? new Date(selectedFactura.fecha_emision).toLocaleDateString("es-GT") : "—"}</span>
-                {selectedFactura.fecha_certificacion && (
-                  <span>Certificada: {new Date(selectedFactura.fecha_certificacion).toLocaleDateString("es-GT")}</span>
-                )}
-              </div>
-            </div>
-            <div className="px-6 pb-6 flex justify-end gap-3">
-              {selectedFactura.estado === "BORRADOR" && (
-                <button
-                  onClick={() => { handleCertificar(selectedFactura); setSelectedFactura(null); }}
-                  className="px-4 py-2 bg-blue-900 text-white rounded-xl text-sm font-semibold hover:bg-blue-800 transition"
-                >
-                  Certificar FEL
-                </button>
-              )}
-              <button
-                onClick={() => setSelectedFactura(null)}
-                className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200 transition"
-              >
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Modales */}
+      {facturaDetalle && (
+        <FacturaModal
+          factura={facturaDetalle}
+          onClose={() => setFacturaDetalle(null)}
+          onValidar={handleValidar}
+          onCertificar={handleCertificar}
+          onPagar={handleAbrirPago}
+          cargando={cargando}
+        />
+      )}
+
+      {facturaPago && cxcPago && (
+        <PagoModal
+          factura={facturaPago}
+          cxc={cxcPago}
+          onClose={() => { setFacturaPago(null); setCxcPago(null); }}
+          onConfirm={handleRegistrarPago}
+          cargando={cargando}
+        />
       )}
     </div>
   );
 };
 
-const Row: React.FC<{ label: string; value: any }> = ({ label, value }) => (
-  <div className="flex justify-between">
-    <span className="text-gray-500">{label}</span>
-    <span className="font-medium text-gray-800">{value ?? "—"}</span>
-  </div>
-);
+/* ── Subcomponente inline: generar borrador desde ID de orden ── */
+const GenerarBorradorInline: React.FC<{
+  onSuccess: (msg: string) => void;
+  onError: (msg: string) => void;
+}> = ({ onSuccess, onError }) => {
+  const [ordenId, setOrdenId] = useState("");
+  const [busy,    setBusy]    = useState(false);
+
+  // importación dinámica para no circular
+  const handleGenerar = async () => {
+    if (!ordenId) return;
+    setBusy(true);
+    try {
+      const { generarBorrador } = await import("../../services/facturacion/facturacion");
+      const res = await generarBorrador(parseInt(ordenId));
+      onSuccess(
+        res.data?.yaExistia
+          ? `Ya existía borrador para orden #${ordenId}.`
+          : `Borrador generado para orden #${ordenId} — ${res.data?.borrador?.numero_factura}`
+      );
+      setOrdenId("");
+    } catch (e: unknown) {
+      onError(e instanceof Error ? e.message : "Error al generar borrador");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <span style={{ display: "inline-flex", gap: 6, alignItems: "center", marginLeft: 8 }}>
+      <input
+        className="fn-input"
+        type="number"
+        placeholder="ID orden"
+        value={ordenId}
+        onChange={(e) => setOrdenId(e.target.value)}
+        style={{ width: 110 }}
+      />
+      <button
+        className="fn-btn fn-btn-primary fn-btn-xs"
+        onClick={handleGenerar}
+        disabled={busy || !ordenId}
+      >
+        {busy ? "…" : "Generar borrador"}
+      </button>
+    </span>
+  );
+};
 
 export default FacturacionPage;

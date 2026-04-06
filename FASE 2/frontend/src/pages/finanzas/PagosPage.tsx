@@ -1,241 +1,223 @@
 // src/pages/finanzas/PagosPage.tsx
-import React, { useEffect, useState } from "react";
-import { getPagos, registrarPago } from "../../services/facturacion/pagos";
+// Reemplaza el archivo existente
+import React, { useEffect, useState, useCallback } from "react";
 import FinanzasHeader from "../../components/finanzas/FinanzasHeader";
 import FinanzasMenu from "../../components/finanzas/FinanzasMenu";
+import FacturaBadge from "../../components/finanzas/FacturaBadge";
+import { getFacturas, getPagosByFactura } from "../../services/facturacion/facturacion";
+type Factura = any;
+type CuentaPorCobrar = any;
+type RegistrarPagoPayload = any;
+type Pago = any;
 
-type Pago = {
-  id: number;
-  factura_id: number;
-  numero_factura?: string;
-  cliente_nombre?: string;
-  monto: number;
-  tipo_pago: "CHEQUE" | "TRANSFERENCIA";
-  numero_autorizacion?: string;
-  banco?: string;
-  referencia?: string;
-  fecha_pago?: string;
-};
+import "../finanzas/finanzas.css";
 
-type NuevoPagoForm = {
-  factura_id: string;
-  monto: string;
-  tipo_pago: "CHEQUE" | "TRANSFERENCIA";
-  numero_autorizacion: string;
-  banco: string;
-  referencia: string;
-};
-
-const FORM_INICIAL: NuevoPagoForm = {
-  factura_id: "",
-  monto: "",
-  tipo_pago: "TRANSFERENCIA",
-  numero_autorizacion: "",
-  banco: "",
-  referencia: "",
-};
+const fmt = (n: number) =>
+  `Q ${(n ?? 0).toLocaleString("es-GT", { minimumFractionDigits: 2 })}`;
+const fmtDate = (s?: string) =>
+  s ? new Date(s).toLocaleDateString("es-GT", { day: "2-digit", month: "short", year: "numeric" }) : "—";
+const fmtDateTime = (s?: string) =>
+  s ? new Date(s).toLocaleString("es-GT") : "—";
 
 const PagosPage: React.FC = () => {
-  const [pagos, setPagos] = useState<Pago[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState<NuevoPagoForm>(FORM_INICIAL);
-  const [guardando, setGuardando] = useState(false);
-  const [filtroTipo, setFiltroTipo] = useState("");
+  /* ── Estado ── */
+  const [facturasConPagos, setFacturasConPagos] = useState<{ factura: Factura; pagos: Pago[] }[]>([]);
+  const [loading,   setLoading]   = useState(true);
+  const [error,     setError]     = useState<string | null>(null);
+  const [expanded,  setExpanded]  = useState<number | null>(null);
+  const [cargandoPagos, setCargandoPagos] = useState<number | null>(null);
 
-  const fetchPagos = async () => {
+  /* ── Cargar facturas certificadas ── */
+  const cargar = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await getPagos({ tipo_pago: filtroTipo || undefined });
-      setPagos(res.data || []);
-    } catch (e: any) {
-      setError(e.message || "Error al cargar pagos");
+      const res = await getFacturas({ estado: "CERTIFICADA", limit: 100 });
+      const facturas: Factura[] = res.data?.facturas ?? res.data ?? [];
+      setFacturasConPagos(facturas.map((f) => ({ factura: f, pagos: [] })));
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Error al cargar");
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => {
-    fetchPagos();
-  }, [filtroTipo]);
+  useEffect(() => { cargar(); }, [cargar]);
 
-  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.factura_id || !form.monto || !form.numero_autorizacion || !form.banco) {
-      setError("Por favor completa todos los campos requeridos.");
+  /* ── Expandir y cargar pagos de una factura ── */
+  const toggleExpandir = async (facturaId: number) => {
+    if (expanded === facturaId) {
+      setExpanded(null);
       return;
     }
-    setGuardando(true);
-    setError(null);
-    setSuccessMsg(null);
+    setExpanded(facturaId);
+
+    // Si ya tiene pagos cargados, no recargar
+    const idx = facturasConPagos.findIndex((fp) => fp.factura.id === facturaId);
+    if (idx === -1 || facturasConPagos[idx].pagos.length > 0) return;
+
+    setCargandoPagos(facturaId);
     try {
-      await registrarPago({
-        factura_id: Number(form.factura_id),
-        monto: Number(form.monto),
-        tipo_pago: form.tipo_pago,
-        numero_autorizacion: form.numero_autorizacion,
-        banco: form.banco,
-        referencia: form.referencia,
-      });
-      setSuccessMsg("Pago registrado. El crédito del cliente fue liberado.");
-      setForm(FORM_INICIAL);
-      setShowForm(false);
-      fetchPagos();
-    } catch (e: any) {
-      setError(e.message || "Error al registrar pago");
+      const res = await getPagosByFactura(facturaId);
+      const pagos: Pago[] = res.data?.pagos ?? res.data ?? [];
+      setFacturasConPagos((prev) =>
+        prev.map((fp) => fp.factura.id === facturaId ? { ...fp, pagos } : fp)
+      );
+    } catch {
+      // Silencioso — los pagos quedan vacíos
     } finally {
-      setGuardando(false);
+      setCargandoPagos(null);
     }
   };
 
-  const totalRecaudado = pagos.reduce((acc, p) => acc + (p.monto || 0), 0);
+  /* ── Totales ── */
+  const totalFacturado = facturasConPagos.reduce((s, fp) => s + fp.factura.total_factura, 0);
+  const totalPagado    = facturasConPagos
+    .flatMap((fp) => fp.pagos)
+    .reduce((s, p) => s + p.monto_pagado, 0);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="fn-page">
       <FinanzasHeader />
       <FinanzasMenu />
 
-      {/* Header de sección */}
-      <div className="bg-blue-900 text-white px-6 py-5 shadow-lg">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">Cobros y Pagos</h1>
-            <p className="text-blue-200 text-sm mt-1">Registro de pagos y liberación de crédito</p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="bg-blue-800 rounded-xl px-5 py-3 text-right">
-              <p className="text-xs text-blue-300">Total recaudado</p>
-              <p className="text-xl font-bold">
-                Q {totalRecaudado.toLocaleString("es-GT", { minimumFractionDigits: 2 })}
-              </p>
-            </div>
-            <button
-              onClick={() => { setShowForm(true); setError(null); setSuccessMsg(null); }}
-              className="px-4 py-2 bg-white text-blue-900 rounded-xl font-bold text-sm hover:bg-blue-50 transition shadow"
-            >
-              + Registrar Pago
-            </button>
-          </div>
+      <div className="fn-container">
+        <div className="fn-page-header">
+          <h1>Historial de Pagos</h1>
+          <p>Facturas certificadas y sus pagos registrados</p>
         </div>
-      </div>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        {/* Mensajes */}
-        {successMsg && (
-          <div className="mb-4 p-4 bg-green-50 border border-green-300 rounded-xl text-green-800 flex items-center gap-2">
-            <svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-            {successMsg}
-          </div>
-        )}
-        {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-300 rounded-xl text-red-800">
-            {error}
-          </div>
-        )}
+        {error && <div className="fn-alert fn-alert-error">✕ {error}</div>}
 
-        {/* Cards resumen */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-          <div className="bg-white rounded-2xl border shadow-sm p-5">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Total pagos</p>
-            <p className="text-3xl font-bold mt-1 text-blue-900">{pagos.length}</p>
+        {/* Stats */}
+        <div className="fn-stats-grid">
+          <div className="fn-stat-card fn-stat-azul">
+            <p className="stat-label">Total facturado</p>
+            <p className="stat-value" style={{ fontSize: "1.1rem" }}>{fmt(totalFacturado)}</p>
+            <p className="stat-sub">{facturasConPagos.length} facturas certificadas</p>
           </div>
-          <div className="bg-white rounded-2xl border shadow-sm p-5">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Transferencias</p>
-            <p className="text-3xl font-bold mt-1 text-indigo-600">
-              {pagos.filter((p) => p.tipo_pago === "TRANSFERENCIA").length}
-            </p>
+          <div className="fn-stat-card fn-stat-verde">
+            <p className="stat-label">Total cobrado</p>
+            <p className="stat-value" style={{ fontSize: "1.1rem" }}>{fmt(totalPagado)}</p>
           </div>
-          <div className="bg-white rounded-2xl border shadow-sm p-5">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Cheques</p>
-            <p className="text-3xl font-bold mt-1 text-cyan-600">
-              {pagos.filter((p) => p.tipo_pago === "CHEQUE").length}
+          <div className="fn-stat-card fn-stat-amarillo">
+            <p className="stat-label">Pendiente de cobro</p>
+            <p className="stat-value" style={{ fontSize: "1.1rem" }}>
+              {fmt(Math.max(0, totalFacturado - totalPagado))}
             </p>
           </div>
         </div>
 
-        {/* Filtro */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-6 flex flex-wrap gap-4 items-center">
-          <div>
-            <label className="block text-xs font-semibold text-gray-500 mb-1">Tipo de pago</label>
-            <select
-              value={filtroTipo}
-              onChange={(e) => setFiltroTipo(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-            >
-              <option value="">Todos</option>
-              <option value="TRANSFERENCIA">Transferencia</option>
-              <option value="CHEQUE">Cheque</option>
-            </select>
+        {/* Tabla con expandibles */}
+        <div className="fn-panel">
+          <div className="fn-panel-header">
+            <h2>Facturas certificadas</h2>
+            <button className="fn-btn fn-btn-ghost fn-btn-sm" onClick={cargar}>↺ Actualizar</button>
           </div>
-          <button
-            onClick={fetchPagos}
-            className="ml-auto px-4 py-2 bg-blue-900 text-white rounded-lg text-sm font-semibold hover:bg-blue-800 transition"
-          >
-            Actualizar
-          </button>
-        </div>
 
-        {/* Tabla */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           {loading ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-700"></div>
-            </div>
-          ) : pagos.length === 0 ? (
-            <div className="text-center py-20 text-gray-400">
-              <svg className="w-12 h-12 mx-auto mb-3 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-              </svg>
-              No hay pagos registrados
+            <div className="fn-spinner" />
+          ) : facturasConPagos.length === 0 ? (
+            <div className="fn-empty">
+              <span className="empty-icon">💰</span>
+              <p>No hay facturas certificadas aún</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 border-b border-gray-100">
+            <div className="fn-table-wrap">
+              <table className="fn-table">
+                <thead>
                   <tr>
-                    {["ID", "Factura", "Cliente", "Monto (Q)", "Tipo", "Banco", "No. Autorización", "Fecha"].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                        {h}
-                      </th>
-                    ))}
+                    <th style={{ width: 32 }}></th>
+                    <th>N° Factura</th>
+                    <th>Cliente</th>
+                    <th>Total factura</th>
+                    <th>Estado cobro</th>
+                    <th>Certificada</th>
+                    <th>UUID SAT</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {pagos.map((p) => (
-                    <tr key={p.id} className="hover:bg-gray-50 transition">
-                      <td className="px-4 py-3 text-gray-400 font-mono text-xs">#{p.id}</td>
-                      <td className="px-4 py-3 font-semibold text-blue-900 font-mono">
-                        {p.numero_factura || `#${p.factura_id}`}
-                      </td>
-                      <td className="px-4 py-3 text-gray-700">{p.cliente_nombre || "—"}</td>
-                      <td className="px-4 py-3 font-semibold text-gray-800">
-                        Q {(p.monto || 0).toLocaleString("es-GT", { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                          p.tipo_pago === "TRANSFERENCIA"
-                            ? "bg-indigo-100 text-indigo-700 border border-indigo-200"
-                            : "bg-cyan-100 text-cyan-700 border border-cyan-200"
-                        }`}>
-                          {p.tipo_pago}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-600">{p.banco || "—"}</td>
-                      <td className="px-4 py-3 font-mono text-xs text-gray-500">{p.numero_autorizacion || "—"}</td>
-                      <td className="px-4 py-3 text-gray-400 text-xs">
-                        {p.fecha_pago ? new Date(p.fecha_pago).toLocaleDateString("es-GT") : "—"}
-                      </td>
-                    </tr>
+                <tbody>
+                  {facturasConPagos.map(({ factura, pagos }) => (
+                    <React.Fragment key={factura.id}>
+                      {/* Fila de la factura */}
+                      <tr
+                        style={{ cursor: "pointer" }}
+                        onClick={() => toggleExpandir(factura.id)}
+                      >
+                        <td style={{ textAlign: "center", color: "var(--fn-azul-mid)", fontWeight: 700 }}>
+                          {expanded === factura.id ? "▾" : "▸"}
+                        </td>
+                        <td className="mono">{factura.numero_factura}</td>
+                        <td>{factura.cliente_nombre ?? factura.nombre_cliente_facturacion}</td>
+                        <td><strong>{fmt(factura.total_factura)}</strong></td>
+                        <td>
+                          {/* Estado de cobro derivado de los pagos */}
+                          {pagos.length === 0
+                            ? <FacturaBadge estado="PENDIENTE" />
+                            : pagos.reduce((s, p) => s + p.monto_pagado, 0) >= factura.total_factura
+                              ? <FacturaBadge estado="PAGADA" />
+                              : <FacturaBadge estado="PENDIENTE" />
+                          }
+                        </td>
+                        <td>{fmtDate(factura.fecha_certificacion)}</td>
+                        <td className="mono" style={{ fontSize: "0.72rem", color: "var(--fn-verde)" }}>
+                          {factura.uuid_autorizacion
+                            ? `✓ ${factura.uuid_autorizacion.slice(0, 20)}…`
+                            : "—"}
+                        </td>
+                      </tr>
+
+                      {/* Fila expandida con pagos */}
+                      {expanded === factura.id && (
+                        <tr>
+                          <td colSpan={7} style={{ padding: 0, background: "#f8fafc" }}>
+                            <div style={{ padding: "12px 20px 12px 48px" }}>
+                              {cargandoPagos === factura.id ? (
+                                <div className="fn-spinner" style={{ padding: 16 }} />
+                              ) : pagos.length === 0 ? (
+                                <p style={{ fontSize: "0.85rem", color: "var(--fn-texto-suave)", margin: 0 }}>
+                                  No hay pagos registrados para esta factura.
+                                </p>
+                              ) : (
+                                <table className="fn-table" style={{ background: "transparent" }}>
+                                  <thead>
+                                    <tr>
+                                      <th>Fecha y hora</th>
+                                      <th>Forma de pago</th>
+                                      <th>Monto pagado</th>
+                                      <th>Banco</th>
+                                      <th>Cuenta</th>
+                                      <th>N° Autorización bancaria</th>
+                                      <th>Registrado por</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {pagos.map((p) => (
+                                      <tr key={p.id}>
+                                        <td>{fmtDateTime(p.fecha_hora_pago)}</td>
+                                        <td><FacturaBadge estado={p.forma_pago} /></td>
+                                        <td><strong style={{ color: "var(--fn-verde)" }}>{fmt(p.monto_pagado)}</strong></td>
+                                        <td>{p.banco_origen}</td>
+                                        <td className="mono">{p.cuenta_origen}</td>
+                                        <td className="mono">{p.numero_autorizacion_bancaria}</td>
+                                        <td>{p.registrado_por_nombre ?? `ID:${p.registrado_por}`}</td>
+                                      </tr>
+                                    ))}
+                                    <tr>
+                                      <td colSpan={2} style={{ fontWeight: 700, paddingTop: 8 }}>Total cobrado</td>
+                                      <td style={{ fontWeight: 700, color: "var(--fn-verde)" }}>
+                                        {fmt(pagos.reduce((s, p) => s + p.monto_pagado, 0))}
+                                      </td>
+                                      <td colSpan={4}></td>
+                                    </tr>
+                                  </tbody>
+                                </table>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   ))}
                 </tbody>
               </table>
@@ -243,124 +225,6 @@ const PagosPage: React.FC = () => {
           )}
         </div>
       </div>
-
-      {/* Modal Registrar Pago */}
-      {showForm && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
-            <div className="bg-blue-900 text-white px-6 py-4 rounded-t-2xl flex items-center justify-between">
-              <h2 className="font-bold text-lg">Registrar Pago</h2>
-              <button onClick={() => setShowForm(false)} className="text-blue-200 hover:text-white transition">
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              {error && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{error}</div>
-              )}
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">ID Factura *</label>
-                  <input
-                    type="number"
-                    name="factura_id"
-                    value={form.factura_id}
-                    onChange={handleFormChange}
-                    required
-                    placeholder="Ej: 42"
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1">Monto (Q) *</label>
-                  <input
-                    type="number"
-                    name="monto"
-                    value={form.monto}
-                    onChange={handleFormChange}
-                    required
-                    placeholder="0.00"
-                    step="0.01"
-                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Tipo de pago *</label>
-                <select
-                  name="tipo_pago"
-                  value={form.tipo_pago}
-                  onChange={handleFormChange}
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                >
-                  <option value="TRANSFERENCIA">Transferencia</option>
-                  <option value="CHEQUE">Cheque</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Banco *</label>
-                <input
-                  type="text"
-                  name="banco"
-                  value={form.banco}
-                  onChange={handleFormChange}
-                  required
-                  placeholder="Ej: Banrural, G&T Continental..."
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">No. Autorización entidad financiera *</label>
-                <input
-                  type="text"
-                  name="numero_autorizacion"
-                  value={form.numero_autorizacion}
-                  onChange={handleFormChange}
-                  required
-                  placeholder="Número de autorización del banco"
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1">Referencia / Notas</label>
-                <input
-                  type="text"
-                  name="referencia"
-                  value={form.referencia}
-                  onChange={handleFormChange}
-                  placeholder="Opcional"
-                  className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-200 transition"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={guardando}
-                  className="px-4 py-2 bg-blue-900 text-white rounded-xl text-sm font-semibold hover:bg-blue-800 transition disabled:opacity-60 flex items-center gap-2"
-                >
-                  {guardando && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>}
-                  {guardando ? "Registrando..." : "Registrar Pago"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

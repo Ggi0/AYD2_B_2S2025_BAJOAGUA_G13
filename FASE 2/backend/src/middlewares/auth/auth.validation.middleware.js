@@ -1,7 +1,8 @@
 // backend/src/middlewares/auth/auth.validation.middleware.js
 "use strict";
 
-const ALLOWED_ROLES = ["cliente", "piloto", "finanzas", "gerencia", "operativo", "agente_logistico"];
+// Agregar 'patio' a los roles permitidos
+const ALLOWED_ROLES = ["cliente", "piloto", "finanzas", "gerencia", "operativo", "agente_logistico", "patio"];
 
 function isValidEmail(email) {
   const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

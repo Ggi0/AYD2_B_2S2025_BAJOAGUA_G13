@@ -15,12 +15,21 @@ function parseDateInput(dateText) {
 // Normaliza y valida la sede para filtros del dashboard.
 function normalizeSede(sede) {
   if (!sede) return null;
-  const value = String(sede).trim().toUpperCase();
-  const allowed = ["GUATEMALA", "XELA", "PUERTO BARRIOS"];
-  if (!allowed.includes(value)) {
+  const value = String(sede).trim().toUpperCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+
+  const aliases = {
+    GUATEMALA: "GUATEMALA",
+    XELA: "XELA",
+    QUETZALTENANGO: "XELA",
+    "PUERTO BARRIOS": "PUERTO BARRIOS",
+  };
+
+  const normalized = aliases[value];
+  if (!normalized) {
     throw new Error("Sede invalida. Valores permitidos: GUATEMALA, XELA, PUERTO BARRIOS");
   }
-  return value;
+
+  return normalized;
 }
 
 // Mapeo de texto libre de origen/destino a las 3 sedes del enunciado.
@@ -130,6 +139,8 @@ async function getCorteDiario({ fecha, sede }) {
   return {
     fecha: selectedDate.toISOString().slice(0, 10),
     sede: selectedSede,
+    modoActualizacion: "TIEMPO_REAL",
+    actualizadoEn: new Date().toISOString(),
     resumen,
     porSede: data,
   };
@@ -145,20 +156,24 @@ async function getKpis({ desde, hasta, sede }) {
 
   const sedeCase = buildSedeCaseForOrders("o");
 
-  // Se usa historial_cliente + orden_kpi para métricas financieras y operativas.
+  // Se usan ordenes + facturas_fel + orden_kpi para métricas financieras y operativas.
   const kpiQuery = `
     WITH base AS (
       SELECT
         ${sedeCase} AS sede,
-        ISNULL(h.monto_facturado, 0) AS ingreso,
-        ISNULL(h.gasto_operativo, 0) AS costo,
-        ISNULL(k.tiempo_planificado, 0) AS tiempo_planificado,
+        ISNULL(f.ingreso_total, 0) AS ingreso,
+        ISNULL(o.costo, 0) AS costo,
+        ISNULL(o.tiempo_estimado, ISNULL(k.tiempo_planificado, 0)) AS tiempo_pactado,
         ISNULL(k.tiempo_real, 0) AS tiempo_real,
         ISNULL(k.retraso, 0) AS retraso
-      FROM historial_cliente h
-      INNER JOIN ordenes o ON o.id = h.orden_id
+      FROM ordenes o
+      LEFT JOIN (
+        SELECT orden_id, SUM(ISNULL(total_factura, 0)) AS ingreso_total
+        FROM facturas_fel
+        GROUP BY orden_id
+      ) f ON f.orden_id = o.id
       LEFT JOIN orden_kpi k ON k.orden_id = o.id
-      WHERE CAST(h.fecha_registro AS DATE) BETWEEN @desde AND @hasta
+      WHERE CAST(COALESCE(o.fecha_entrega, o.fecha_creacion) AS DATE) BETWEEN @desde AND @hasta
     )
     SELECT
       sede,
@@ -166,10 +181,10 @@ async function getKpis({ desde, hasta, sede }) {
       SUM(costo) AS costos,
       SUM(ingreso) - SUM(costo) AS rentabilidad_monto,
       CASE WHEN SUM(ingreso) > 0 THEN ((SUM(ingreso) - SUM(costo)) / SUM(ingreso)) * 100 ELSE 0 END AS rentabilidad_porcentaje,
-      AVG(CASE WHEN tiempo_planificado > 0 THEN CAST(tiempo_planificado AS FLOAT) END) AS tiempo_planificado_promedio,
+      AVG(CASE WHEN tiempo_pactado > 0 THEN CAST(tiempo_pactado AS FLOAT) END) AS tiempo_pactado_promedio,
       AVG(CASE WHEN tiempo_real > 0 THEN CAST(tiempo_real AS FLOAT) END) AS tiempo_real_promedio,
-      SUM(CASE WHEN tiempo_planificado > 0 AND tiempo_real <= tiempo_planificado THEN 1 ELSE 0 END) AS ordenes_a_tiempo,
-      SUM(CASE WHEN tiempo_planificado > 0 THEN 1 ELSE 0 END) AS ordenes_con_medicion,
+      SUM(CASE WHEN tiempo_pactado > 0 AND tiempo_real > 0 AND tiempo_real <= tiempo_pactado THEN 1 ELSE 0 END) AS ordenes_a_tiempo,
+      SUM(CASE WHEN tiempo_pactado > 0 AND tiempo_real > 0 THEN 1 ELSE 0 END) AS ordenes_con_medicion,
       AVG(CASE WHEN retraso >= 0 THEN CAST(retraso AS FLOAT) END) AS retraso_promedio
     FROM base
     GROUP BY sede
@@ -199,7 +214,8 @@ async function getKpis({ desde, hasta, sede }) {
       costos: Number(row.costos || 0),
       rentabilidadMonto: Number(row.rentabilidad_monto || 0),
       rentabilidadPorcentaje: Number(row.rentabilidad_porcentaje || 0),
-      tiempoPlanificadoPromedio: Number(row.tiempo_planificado_promedio || 0),
+      tiempoPactadoPromedio: Number(row.tiempo_pactado_promedio || 0),
+      tiempoPlanificadoPromedio: Number(row.tiempo_pactado_promedio || 0),
       tiempoRealPromedio: Number(row.tiempo_real_promedio || 0),
       retrasoPromedio: Number(row.retraso_promedio || 0),
       ordenesConMedicion,
@@ -232,6 +248,8 @@ async function getKpis({ desde, hasta, sede }) {
     desde: startDate.toISOString().slice(0, 10),
     hasta: endDate.toISOString().slice(0, 10),
     sede: selectedSede,
+    modoActualizacion: "TIEMPO_REAL",
+    actualizadoEn: new Date().toISOString(),
     resumen: {
       ingresos: Number(resumen.ingresos.toFixed(2)),
       costos: Number(resumen.costos.toFixed(2)),
@@ -253,16 +271,20 @@ async function getAlertas({ desde, hasta }) {
   // Detecta clientes con caída > 30% de carga en semana actual vs semana previa.
   const bajaCargaQuery = `
     WITH carga_actual AS (
-      SELECT h.cliente_id, SUM(ISNULL(h.volumen_carga_ton, 0)) AS carga_actual
-      FROM historial_cliente h
-      WHERE CAST(h.fecha_registro AS DATE) BETWEEN DATEADD(DAY, -7, @hasta) AND @hasta
-      GROUP BY h.cliente_id
+      SELECT
+        o.cliente_id,
+        SUM(COALESCE(NULLIF(o.peso_real, 0), o.peso_estimado, 0)) AS carga_actual
+      FROM ordenes o
+      WHERE CAST(COALESCE(o.fecha_entrega, o.fecha_creacion) AS DATE) BETWEEN DATEADD(DAY, -7, @hasta) AND @hasta
+      GROUP BY o.cliente_id
     ),
     carga_previa AS (
-      SELECT h.cliente_id, SUM(ISNULL(h.volumen_carga_ton, 0)) AS carga_previa
-      FROM historial_cliente h
-      WHERE CAST(h.fecha_registro AS DATE) BETWEEN DATEADD(DAY, -14, @hasta) AND DATEADD(DAY, -8, @hasta)
-      GROUP BY h.cliente_id
+      SELECT
+        o.cliente_id,
+        SUM(COALESCE(NULLIF(o.peso_real, 0), o.peso_estimado, 0)) AS carga_previa
+      FROM ordenes o
+      WHERE CAST(COALESCE(o.fecha_entrega, o.fecha_creacion) AS DATE) BETWEEN DATEADD(DAY, -14, @hasta) AND DATEADD(DAY, -8, @hasta)
+      GROUP BY o.cliente_id
     )
     SELECT
       u.id AS cliente_id,
@@ -282,11 +304,10 @@ async function getAlertas({ desde, hasta }) {
     WITH rutas AS (
       SELECT
         CONCAT(o.origen, ' -> ', o.destino) AS ruta,
-        SUM(ISNULL(h.gasto_operativo, 0)) AS gasto_total,
-        SUM(NULLIF(h.volumen_carga_ton, 0)) AS volumen_total
-      FROM historial_cliente h
-      INNER JOIN ordenes o ON o.id = h.orden_id
-      WHERE CAST(h.fecha_registro AS DATE) BETWEEN @desde AND @hasta
+        SUM(ISNULL(o.costo, 0)) AS gasto_total,
+        SUM(COALESCE(NULLIF(o.peso_real, 0), o.peso_estimado, 0)) AS volumen_total
+      FROM ordenes o
+      WHERE CAST(COALESCE(o.fecha_entrega, o.fecha_creacion) AS DATE) BETWEEN @desde AND @hasta
       GROUP BY CONCAT(o.origen, ' -> ', o.destino)
     ),
     metricas AS (
@@ -352,6 +373,8 @@ async function getAlertas({ desde, hasta }) {
   return {
     desde: startDate.toISOString().slice(0, 10),
     hasta: endDate.toISOString().slice(0, 10),
+    modoActualizacion: "TIEMPO_REAL",
+    actualizadoEn: new Date().toISOString(),
     totalAlertas: alertasClientes.length + alertasRutas.length,
     clientesBajaCarga: alertasClientes,
     rutasExcesoConsumo: alertasRutas,
@@ -362,4 +385,9 @@ module.exports = {
   getCorteDiario,
   getKpis,
   getAlertas,
+  __testables: {
+    parseDateInput,
+    normalizeSede,
+    buildSedeCaseForOrders,
+  },
 };

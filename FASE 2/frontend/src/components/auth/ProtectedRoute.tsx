@@ -32,12 +32,16 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles 
       // Redirigir según el rol del usuario
       if (userRole === 'client' || userRole === 'cliente') {
         return <Navigate to="/client/dashboard" replace />;
-      } else if (userRole === 'logistic' || userRole === 'logistico') {
+      } else if (userRole === 'logistic' || userRole === 'logistico' || userRole === 'agente_logistico' ) {
         return <Navigate to="/logistico/dashboard" replace />;
       } else if (userRole === 'piloto') {
         return <Navigate to="/piloto/dashboard" replace />;
+      } else if (userRole === 'operativo') {
+        return <Navigate to="/operativo/dashboard" replace />;
+      } else if (userRole === 'patio') {
+        return <Navigate to="/patio/dashboard" replace />;
       } else if (userRole === 'finanzas') {
-        return <Navigate to="/finanzas/dashboard" replace />;
+        return <Navigate to="/finanzas/facturacion" replace />;
       } else if (userRole === 'admin') {
         return <Navigate to="/admin/dashboard" replace />;
       }
