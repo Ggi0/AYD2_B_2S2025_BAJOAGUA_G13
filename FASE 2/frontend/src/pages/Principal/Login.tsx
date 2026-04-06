@@ -54,8 +54,7 @@ const Login: React.FC = () => {
       } else if (userRole === 'piloto') {
         navigate('/piloto/dashboard');
       } else if (userRole === 'finanzas') {
-        navigate('/finanzas/facturacion');
-      } else if (userRole === 'gerencia') {
+        navigate('/finanzas/dashboard');
       } else if (userRole === 'patio') {
         navigate('/patio/dashboard');
       } else if (userRole === 'finanzas') {
