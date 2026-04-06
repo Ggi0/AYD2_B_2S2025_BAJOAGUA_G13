@@ -1,7 +1,7 @@
 // src/components/gerencial/EventosOrdenes.tsx
 import React, { useEffect, useState } from "react";
 import { getEventosOrdenes } from "../../services/Gerencial/gerencial";
-import { FaExclamationCircle, FaExclamationTriangle, FaClock, FaCheckCircle } from 'react-icons/fa';
+import { FaExclamationCircle, FaExclamationTriangle, FaClock, FaCheckCircle, FaChevronDown, FaChevronUp } from 'react-icons/fa';
 
 interface Evento {
   eventoId: number;
@@ -74,6 +74,7 @@ const EventosOrdenes: React.FC<EventosOrdenesProps> = ({ desde, hasta, sede }) =
   const [filtroTipo, setFiltroTipo] = useState<string>("TODOS");
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ordenesExpandidas, setOrdenesExpandidas] = useState<Set<number>>(new Set());
 
   const cargarEventos = async () => {
     try {
@@ -135,6 +136,25 @@ const EventosOrdenes: React.FC<EventosOrdenesProps> = ({ desde, hasta, sede }) =
       ? eventos.eventos
       : eventos.eventos.filter((e) => e.tipoEvento === filtroTipo);
 
+  // Agrupar eventos por orden
+  const ordenesAgrupadas = new Map<number, Evento[]>();
+  eventosFiltrados.forEach((evento) => {
+    if (!ordenesAgrupadas.has(evento.ordenId)) {
+      ordenesAgrupadas.set(evento.ordenId, []);
+    }
+    ordenesAgrupadas.get(evento.ordenId)?.push(evento);
+  });
+
+  const toggleOrden = (ordenId: number) => {
+    const newSet = new Set(ordenesExpandidas);
+    if (newSet.has(ordenId)) {
+      newSet.delete(ordenId);
+    } else {
+      newSet.add(ordenId);
+    }
+    setOrdenesExpandidas(newSet);
+  };
+
   return (
     <div className="bg-white rounded-lg shadow-md p-6">
       {/* Encabezado */}
@@ -194,82 +214,167 @@ const EventosOrdenes: React.FC<EventosOrdenesProps> = ({ desde, hasta, sede }) =
         ))}
       </div>
 
-      {/* Grid de tarjetas */}
-      <div className="grid grid-cols-2 gap-4">
-        {eventosFiltrados.length === 0 ? (
+      {/* Grid de órdenes agrupadas */}
+      <div className="space-y-4">
+        {Array.from(ordenesAgrupadas.entries()).length === 0 ? (
           <div className="col-span-full text-center py-12 text-gray-500">
             <p>No hay eventos para mostrar en este período</p>
           </div>
         ) : (
-          eventosFiltrados.map((evento) => {
-            const colores = TIPO_EVENTO_COLORS[evento.tipoEvento];
-            const fecha = new Date(evento.fechaHora);
+          Array.from(ordenesAgrupadas.entries()).map(([ordenId, eventosOrden]) => {
+            const primerevento = eventosOrden[0];
+            const isExpandido = ordenesExpandidas.has(ordenId);
+            
+            // Contar eventos por tipo en esta orden
+            const conteoEventos = {
+              NORMAL: eventosOrden.filter(e => e.tipoEvento === 'NORMAL').length,
+              INCIDENTE: eventosOrden.filter(e => e.tipoEvento === 'INCIDENTE').length,
+              RETRASO: eventosOrden.filter(e => e.tipoEvento === 'RETRASO').length,
+              CRITICO: eventosOrden.filter(e => e.tipoEvento === 'CRITICO').length,
+            };
+
+            // Determinar si hay evento crítico
+            const tieneCritico = conteoEventos.CRITICO > 0;
+            const tieneRetraso = conteoEventos.RETRASO > 0;
 
             return (
               <div
-                key={evento.eventoId}
-                className={`border-l-4 ${colores.border} ${colores.bg} rounded-lg p-4 transition-all hover:shadow-lg hover:scale-105 flex flex-col`}
+                key={ordenId}
+                className={`border rounded-lg transition-all ${
+                  tieneCritico
+                    ? 'border-red-300 bg-red-50'
+                    : tieneRetraso
+                    ? 'border-orange-300 bg-orange-50'
+                    : 'border-gray-200 bg-white'
+                } shadow-md hover:shadow-lg`}
               >
-                {/* Tipo y Badge */}
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <div className="flex items-center gap-2">
-                    <div>{colores.icon}</div>
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs font-semibold ${colores.text} ${colores.bg} border ${colores.border}`}
-                    >
-                      {evento.tipoEvento}
-                    </span>
+                {/* Encabezado de la orden */}
+                <button
+                  onClick={() => toggleOrden(ordenId)}
+                  className="w-full p-4 flex items-center justify-between hover:bg-opacity-75 transition"
+                >
+                  <div className="flex items-center gap-4 flex-1">
+                    {/* Info de la orden */}
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <h3 className="text-lg font-bold text-gray-800">
+                          Orden #{primerevento.numeroOrden}
+                        </h3>
+                        {tieneCritico && (
+                          <span className="px-2 py-1 bg-red-600 text-white text-xs font-semibold rounded-full flex items-center gap-1">
+                            <FaExclamationCircle className="text-sm" />
+                            CRÍTICO
+                          </span>
+                        )}
+                      </div>
+                      
+                      {/* Detalles */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                        <div>
+                          <p className="text-gray-600">Cliente</p>
+                          <p className="font-semibold text-gray-800">{primerevento.clienteNombre}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600">Ruta</p>
+                          <p className="font-semibold text-gray-800">{primerevento.ruta}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600">Piloto</p>
+                          <p className="font-semibold text-gray-800">{primerevento.pilotoNombre}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-600">Eventos</p>
+                          <p className="font-semibold text-gray-800">{eventosOrden.length} total</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Conteo de eventos por tipo */}
+                    <div className="flex gap-2">
+                      {conteoEventos.CRITICO > 0 && (
+                        <div className="bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-semibold flex items-center gap-1">
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <circle cx="10" cy="10" r="8" />
+                          </svg>
+                          {conteoEventos.CRITICO}
+                        </div>
+                      )}
+                      {conteoEventos.RETRASO > 0 && (
+                        <div className="bg-orange-100 text-orange-700 px-2 py-1 rounded text-xs font-semibold flex items-center gap-1">
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <circle cx="10" cy="10" r="8" />
+                          </svg>
+                          {conteoEventos.RETRASO}
+                        </div>
+                      )}
+                      {conteoEventos.INCIDENTE > 0 && (
+                        <div className="bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-semibold flex items-center gap-1">
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <circle cx="10" cy="10" r="8" />
+                          </svg>
+                          {conteoEventos.INCIDENTE}
+                        </div>
+                      )}
+                      {conteoEventos.NORMAL > 0 && (
+                        <div className="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-semibold flex items-center gap-1">
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <circle cx="10" cy="10" r="8" />
+                          </svg>
+                          {conteoEventos.NORMAL}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  {evento.generaRetraso && (
-                    <svg className="w-4 h-4 text-red-600" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                    </svg>
-                  )}
-                </div>
 
-                {/* Orden */}
-                <div className="mb-3">
-                  <p className="text-sm font-bold text-gray-800">Orden #{evento.numeroOrden}</p>
-                </div>
+                  {/* Botón expandir */}
+                  <div className="ml-4 text-gray-600">
+                    {isExpandido ? (
+                      <FaChevronUp className="text-xl" />
+                    ) : (
+                      <FaChevronDown className="text-xl" />
+                    )}
+                  </div>
+                </button>
 
-                {/* Ruta */}
-                <div className="mb-3 p-2 bg-white/50 rounded">
-                  <p className="text-xs text-gray-600">
-                    <span className="font-semibold">Ruta:</span>
-                  </p>
-                  <p className="text-sm font-semibold text-gray-700">{evento.ruta}</p>
-                </div>
+                {/* Detalle de eventos (expandible) */}
+                {isExpandido && (
+                  <div className="border-t p-4 bg-opacity-50">
+                    <h4 className="font-semibold text-gray-800 mb-4">Bitácora de Eventos</h4>
+                    <div className="space-y-3">
+                      {eventosOrden.map((evento) => {
+                        const colores = TIPO_EVENTO_COLORS[evento.tipoEvento];
+                        const fecha = new Date(evento.fechaHora);
 
-                {/* Cliente */}
-                <div className="mb-3">
-                  <p className="text-xs text-gray-600">
-                    <span className="font-semibold">Cliente:</span> {evento.clienteNombre}
-                  </p>
-                </div>
-
-                {/* Descripción */}
-                <div className="mb-3 flex-grow">
-                  <p className="text-xs text-gray-600 font-semibold mb-1">Descripción:</p>
-                  <p className="text-xs text-gray-700 line-clamp-3">{evento.descripcion}</p>
-                </div>
-
-                {/* Piloto */}
-                {evento.pilotoNombre !== "No asignado" && (
-                  <div className="mb-3 p-2 bg-white/50 rounded">
-                    <p className="text-xs text-gray-600 flex items-center gap-1">
-                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                        <path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" />
-                      </svg>
-                      <span className="font-semibold">{evento.pilotoNombre}</span>
-                    </p>
+                        return (
+                          <div
+                            key={evento.eventoId}
+                            className={`border-l-4 ${colores.border} ${colores.bg} rounded p-3`}
+                          >
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                              <div className="flex items-center gap-2">
+                                <div>{colores.icon}</div>
+                                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${colores.text} ${colores.bg} border ${colores.border}`}>
+                                  {evento.tipoEvento}
+                                </span>
+                              </div>
+                              {evento.generaRetraso && (
+                                <svg className="w-4 h-4 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                </svg>
+                              )}
+                            </div>
+                            <p className="text-xs text-gray-700 mb-2">{evento.descripcion}</p>
+                            <div className="flex justify-between items-center text-xs text-gray-500">
+                              <span>
+                                {fecha.toLocaleDateString("es-ES")} {fecha.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
-
-                {/* Fecha y Hora */}
-                <div className="pt-3 border-t border-gray-300 text-xs text-gray-500">
-                  <p>{fecha.toLocaleDateString("es-ES")}</p>
-                  <p className="font-semibold">{fecha.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}</p>
-                </div>
               </div>
             );
           })
