@@ -15,7 +15,9 @@ import ClientesList from './pages/logistico/ClientesList';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import FacturacionPage from './pages/finanzas/FacturacionPage';
 import PagosPage from './pages/finanzas/PagosPage';
-import DashboardGerencial from './pages/finanzas/DashboardGerencial';
+import DashboardGerencial from './pages/gerencia/DashboardGerencial';
+import DashboardFinanzas from './pages/finanzas/DashboardFinanzas';
+import CobrosPage from './pages/finanzas/CobrosPage';
 import { AuthProvider } from './context/AuthContext';
 import ClienteOrdenesPage from "./pages/client/ClientOrdenesPage";
 import OperativoPrincipal from './pages/Operativo/OperativoPrincipal';
@@ -243,14 +245,29 @@ function App() {
               </ProtectedRoute>
             }
           />
+
+        <Route path="/finanzas/dashboard" element={
+          <ProtectedRoute allowedRoles={['finanzas', 'gerencia', 'admin']}>
+            <DashboardFinanzas />
+          </ProtectedRoute>
+        } />
+        <Route path="/finanzas/cobros" element={
+          <ProtectedRoute allowedRoles={['finanzas', 'gerencia', 'admin']}>
+            <CobrosPage />
+          </ProtectedRoute>
+        } />
+
+
           <Route
-            path="/finanzas/dashboard"
+            path="/Gerencia/dashboad"
             element={
-              <ProtectedRoute allowedRoles={["finanzas", "gerencia", "admin"]}>
+              <ProtectedRoute allowedRoles={['gerencia', 'admin']}>
                 <DashboardGerencial />
               </ProtectedRoute>
             }
           />
+
+
 
           {/* ── Piloto ── */}
           <Route
