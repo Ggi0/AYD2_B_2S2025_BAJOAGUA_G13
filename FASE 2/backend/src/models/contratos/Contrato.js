@@ -217,6 +217,40 @@ const buscarVigentePorCliente = async (cliente_id) => {
 };
 
 /**
+ * Busca TODOS los contratos vigentes de un cliente (para validación integral)
+ * @async
+ * @function buscarTodosPorCliente
+ * @param {number} cliente_id - ID del cliente
+ * @returns {Promise<Array>} Array de objetos contrato vigentes con:
+ *   - {number} id - ID del contrato
+ *   - {string} numero_contrato - Número del contrato
+ *   - {Date} fecha_inicio - Fecha de inicio
+ *   - {Date} fecha_fin - Fecha de vencimiento
+ *   - {string} estado - Estado (VIGENTE)
+ *   - {number} limite_credito - Límite de crédito
+ *   - {number} saldo_usado - Saldo utilizado
+ *   - {number} plazo_pago - Plazo en días
+ * @example
+ * const contratosVigentes = await buscarTodosPorCliente(5);
+ */
+const buscarTodosPorCliente = async (cliente_id) => {
+  const pool = await getConnection();
+  const result = await pool.request()
+    .input('cliente_id', sql.Int, cliente_id)
+    .query(`
+      SELECT
+        c.id, c.numero_contrato, c.fecha_inicio, c.fecha_fin,
+        c.estado, c.limite_credito, c.saldo_usado, c.plazo_pago
+      FROM contratos c
+      WHERE c.cliente_id = @cliente_id
+        AND c.estado      = 'VIGENTE'
+        AND c.fecha_fin  >= CAST(GETDATE() AS DATE)
+      ORDER BY c.fecha_fin DESC
+    `);
+  return result.recordset || [];
+};
+
+/**
  * Actualiza los datos de un contrato existente
  * @async
  * @function actualizarContrato
@@ -319,13 +353,34 @@ const cambiarEstado = async (id, estado) => {
   return result.recordset[0];
 };
 
+/**
+ * Obtiene el contrato más reciente (para generar el siguiente número)
+ * @async
+ * @function obtenerUltimoContrato
+ * @returns {Promise<Object|undefined>} Último contrato creado con numero_contrato
+ * @example
+ * const ultimoContrato = await obtenerUltimoContrato();
+ */
+const obtenerUltimoContrato = async () => {
+  const pool = await getConnection();
+  const result = await pool.request()
+    .query(`
+      SELECT TOP 1 id, numero_contrato, fecha_creacion
+      FROM contratos
+      ORDER BY id DESC
+    `);
+  return result.recordset[0];
+};
+
 module.exports = {
   crearContrato,
   buscarPorId,
   listarPorCliente,
   buscarVigentePorCliente,
+  buscarTodosPorCliente,
   actualizarContrato,
   actualizarSaldo,
   cambiarEstado,
-  listarTodos  // NUEVO
+  listarTodos,
+  obtenerUltimoContrato
 };

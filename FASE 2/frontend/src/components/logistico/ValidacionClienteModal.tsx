@@ -1,6 +1,6 @@
 // src/components/logistico/ValidacionClienteModal.tsx
 import React, { useState } from 'react';
-import { FaCheckCircle, FaTimesCircle, FaTruck, FaCalculator } from 'react-icons/fa';
+import { FaCheckCircle, FaTimesCircle, FaCalculator } from 'react-icons/fa';
 import { useContratos } from '../../services/Logistico/hooks/useContratos';
 import { formatMoney } from '../../services/Logistico/Logistico';
 

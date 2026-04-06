@@ -1,7 +1,6 @@
 // src/services/Logistico/Logistico.ts
 import apiService from '../api';
 import type { 
-  ApiResponse, 
   Contrato, 
   CrearContratoPayload,
   ValidacionCliente,
@@ -29,8 +28,8 @@ export type TarifaNegociada = {
 };
 
 export type ContratoConDetalles = Contrato & {
-  tarifas_negociadas?: TarifaNegociada[];
-  rutas_autorizadas?: RutaAutorizada[];
+  tarifas?: TarifaNegociada[];
+  rutas?: RutaAutorizada[];
   descuentos?: DescuentoContrato[];
 };
 
@@ -46,17 +45,15 @@ export type ResumenValidacion = {
 
 // Mapeo de tipos de unidad para mostrar en UI
 export const TIPO_UNIDAD_MAP: Record<string, { label: string; color: string }> = {
-  LIGERA: { label: 'Ligera', color: 'bg-green-100 text-green-800' },
-  PESADA: { label: 'Pesada', color: 'bg-orange-100 text-orange-800' },
+  LIGERA:  { label: 'Ligera',  color: 'bg-green-100 text-green-800'  },
+  PESADA:  { label: 'Pesada',  color: 'bg-orange-100 text-orange-800' },
   CABEZAL: { label: 'Cabezal', color: 'bg-purple-100 text-purple-800' }
 };
 
 // ============ SERVICIOS DE CONTRATOS ============
 
 export const ContratoService = {
-  /**
-   * Crear un nuevo contrato
-   */
+
   crear: async (payload: CrearContratoPayload): Promise<Contrato> => {
     const response = await apiService.crearContrato(payload);
     if (!response.ok) {
@@ -65,9 +62,6 @@ export const ContratoService = {
     return response.data;
   },
 
-  /**
-   * Obtener contrato por ID
-   */
   obtener: async (id: number): Promise<ContratoConDetalles> => {
     const response = await apiService.obtenerContrato(id);
     if (!response.ok) {
@@ -76,9 +70,6 @@ export const ContratoService = {
     return response.data as ContratoConDetalles;
   },
 
-  /**
-   * Listar contratos de un cliente
-   */
   listarPorCliente: async (clienteId: number): Promise<Contrato[]> => {
     const response = await apiService.listarContratosPorCliente(clienteId);
     if (!response.ok) {
@@ -87,9 +78,7 @@ export const ContratoService = {
     return response.data;
   },
 
-  /**
-   * Actualizar contrato
-   */
+  // CORRECCIÓN — modificarContrato usa PUT en lugar de POST
   actualizar: async (id: number, payload: Partial<CrearContratoPayload>): Promise<Contrato> => {
     const response = await apiService.modificarContrato(id, payload);
     if (!response.ok) {
@@ -98,9 +87,14 @@ export const ContratoService = {
     return response.data;
   },
 
-  /**
-   * Validar si un cliente puede realizar un servicio
-   */
+  listarTodos: async (params?: { limit?: number; estado?: string }): Promise<Contrato[]> => {
+    const response = await apiService.listarTodosContratos(params);
+    if (!response.ok) {
+      throw new Error(response.mensaje || 'Error al listar contratos');
+    }
+    return response.data;
+  },
+
   validarServicio: async (
     clienteId: number,
     origen: string,
@@ -108,57 +102,33 @@ export const ContratoService = {
     tipoUnidad: string
   ): Promise<ResumenValidacion> => {
     const response = await apiService.validarCliente(clienteId, { origen, destino, tipo_unidad: tipoUnidad });
-    
+
     if (!response.ok) {
-      return {
-        esValido: false,
-        mensaje: response.mensaje || 'Error al validar cliente'
-      };
+      return { esValido: false, mensaje: response.mensaje || 'Error al validar cliente' };
     }
 
     const data = response.data as ValidacionCliente;
-    
+
     if (!data.valido) {
-      return {
-        esValido: false,
-        mensaje: data.mensaje || 'Cliente no autorizado para este servicio'
-      };
+      return { esValido: false, mensaje: data.mensaje || 'Cliente no autorizado para este servicio' };
     }
 
-    // Calcular costo final con descuento si aplica
     let costoFinal = data.tarifa_negociada?.costo_km_negociado || 0;
     if (data.descuento && data.descuento.porcentaje_descuento > 0) {
       costoFinal = costoFinal * (1 - data.descuento.porcentaje_descuento / 100);
     }
 
     return {
-      esValido: true,
-      contratoId: data.contrato?.id,
-      contratoNumero: data.contrato?.numero_contrato,
-      tarifaAplicable: data.tarifa_negociada?.costo_km_negociado,
+      esValido:           true,
+      contratoId:         data.contrato?.id,
+      contratoNumero:     data.contrato?.numero_contrato,
+      tarifaAplicable:    data.tarifa_negociada?.costo_km_negociado,
       descuentoAplicable: data.descuento?.porcentaje_descuento,
-      costoFinalPorKm: costoFinal,
-      mensaje: 'Cliente autorizado para el servicio'
+      costoFinalPorKm:    costoFinal,
+      mensaje:            'Cliente autorizado para el servicio'
     };
   },
 
-  
-  // src/services/Logistico/Logistico.ts
-// Agregar esta función al objeto ContratoService
-
-/**
- * Listar todos los contratos del sistema
- */
-listarTodos: async (params?: { limit?: number; estado?: string }): Promise<Contrato[]> => {
-  const response = await apiService.listarTodosContratos(params);
-  if (!response.ok) {
-    throw new Error(response.mensaje || 'Error al listar contratos');
-  }
-  return response.data;
-},
-  /**
-   * Agregar descuento a un contrato
-   */
   agregarDescuento: async (contratoId: number, descuento: DescuentoContrato): Promise<any> => {
     const response = await apiService.agregarDescuento(contratoId, descuento);
     if (!response.ok) {
@@ -167,9 +137,6 @@ listarTodos: async (params?: { limit?: number; estado?: string }): Promise<Contr
     return response.data;
   },
 
-  /**
-   * Agregar ruta autorizada a un contrato
-   */
   agregarRuta: async (contratoId: number, ruta: RutaAutorizada): Promise<any> => {
     const response = await apiService.agregarRuta(contratoId, ruta);
     if (!response.ok) {
@@ -178,9 +145,6 @@ listarTodos: async (params?: { limit?: number; estado?: string }): Promise<Contr
     return response.data;
   },
 
-  /**
-   * Obtener lista de tarifarios disponibles
-   */
   obtenerTarifarios: async (): Promise<Tarifario[]> => {
     const response = await apiService.obtenerTarifarios();
     if (!response.ok) {
@@ -189,9 +153,6 @@ listarTodos: async (params?: { limit?: number; estado?: string }): Promise<Contr
     return response.data;
   },
 
-  /**
-   * Obtener rangos de referencia
-   */
   obtenerRangosReferencia: async (): Promise<RangosReferencia> => {
     const response = await apiService.obtenerRangosReferencia();
     if (!response.ok) {
@@ -219,11 +180,11 @@ export const formatDate = (dateString: string): string => {
   });
 };
 
+// CORRECCIÓN — agregado EXPIRADO y SUSPENDIDO que usa tu BD
 export const getContratoEstadoInfo = (estado: string) => {
   const estados: Record<string, { label: string; color: string; bg: string }> = {
-    VIGENTE: { label: 'Vigente', color: 'text-green-800', bg: 'bg-green-100' },
-    VENCIDO: { label: 'Vencido', color: 'text-red-800', bg: 'bg-red-100' },
-    CANCELADO: { label: 'Cancelado', color: 'text-gray-800', bg: 'bg-gray-100' },
+    VIGENTE:    { label: 'Vigente',    color: 'text-green-800',  bg: 'bg-green-100'  },
+    EXPIRADO:   { label: 'Expirado',   color: 'text-red-800',    bg: 'bg-red-100'    },
     SUSPENDIDO: { label: 'Suspendido', color: 'text-yellow-800', bg: 'bg-yellow-100' }
   };
   return estados[estado] || { label: estado, color: 'text-gray-800', bg: 'bg-gray-100' };

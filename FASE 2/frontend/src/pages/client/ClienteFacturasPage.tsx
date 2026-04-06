@@ -109,10 +109,32 @@ const ClienteFacturasPage: React.FC = () => {
     if (!userId) return;
     setLoading(true);
     setError(null);
+  
     try {
       const response = await getFacturasByCliente(userId);
+  
       if (response?.ok) {
-        setFacturas(response.data || []);
+        const facturasTransformadas = (response.data?.facturas || []).map((f: any) => ({
+          id: f.id,
+          numero_factura: f.numero_factura,
+          fecha_emision: f.fecha_emision,
+        
+          // ⚠️ no viene del backend
+          fecha_vencimiento: null,
+        
+          // 🔥 FIX IMPORTANTE
+          monto_total: f.total_factura,
+        
+          estado: f.estado,
+        
+          uuid_autorizacion: f.uuid_autorizacion,
+          orden_id: f.orden_id,
+        
+          // 🔥 FIX nombre correcto
+          contrato_numero: f.numero_contrato,
+        }));
+        
+        setFacturas(facturasTransformadas);
       } else {
         setError(response?.mensaje || 'Error al cargar facturas');
       }

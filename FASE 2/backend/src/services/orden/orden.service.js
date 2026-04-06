@@ -9,25 +9,48 @@ async function generarOrden(payload) {
     payload.peso_estimado,
   );
 
+  // Validaciones de seguridad
   if (!ctx.contrato) throw crearError("Contrato no vigente o bloqueado", 403);
   if (ctx.facturasVencidas > 0)
     throw crearError("Tiene facturas vencidas", 403);
   if (!ctx.ruta) throw crearError("Ruta no autorizada por contrato", 403);
   if (!ctx.tarifa) throw crearError("Peso excede capacidad de unidades", 403);
 
-  const costoTotal = ctx.ruta.distancia_km * ctx.tarifa.costo_km;
+  // 1. Cálculo del costo base inicial
+  const costoBase = ctx.ruta.distancia_km * ctx.tarifa.costo_km;
 
-  if (ctx.contrato.saldo_usado + costoTotal > ctx.contrato.limite_credito) {
-    throw crearError("Crédito insuficiente", 403);
+  // 2. Manejo del porcentaje (Si en la BD es 12, aquí llega como 12)
+  const porcentaje = ctx.descuento || 0;
+  const factorDescuento = porcentaje / 100;
+
+  const montoDescuento = costoBase * factorDescuento;
+  const costoFinal = costoBase - montoDescuento;
+
+  // 3. Validación de límite de crédito
+  if (ctx.contrato.saldo_usado + costoFinal > ctx.contrato.limite_credito) {
+    throw crearError("Crédito insuficiente para cubrir esta orden", 403);
   }
 
+  // 4. Inserción en la base de datos
   const nuevaOrden = await ordenStore.insertarOrden({
     ...payload,
     contrato_id: ctx.contrato.id,
-    costo: costoTotal,
+    costo: costoFinal, // Valor neto a pagar
+    tarifa_aplicada: ctx.tarifa.costo_km, // Guardamos la tarifa original para auditoría
   });
 
-  return { mensaje: "Orden registrada exitosamente", data: nuevaOrden };
+  return {
+    mensaje: "Orden registrada exitosamente",
+    data: {
+      ...nuevaOrden,
+      detalle_economico: {
+        subtotal: costoBase,
+        descuento_porcentual: `${porcentaje}%`,
+        monto_descontado: montoDescuento,
+        total_neto: costoFinal,
+      },
+    },
+  };
 }
 
 function crearError(msg, code) {
@@ -120,6 +143,14 @@ async function getPilotos() {
   };
 }
 
+async function getRutasAutorizadas(id_cliente) {
+  const rutas = await ordenStore.getRutasAutorizadas(id_cliente);
+  return {
+    mensaje: "Obtención de rutas exitosa",
+    data: rutas,
+  };
+}
+
 async function registrarSalidaPatio(id, payload) {
   try {
     if (!payload.asegurada || !payload.estibada) {
@@ -192,5 +223,6 @@ module.exports = {
   optenerOrdenPendiente,
   optenerOrdenPlanificada,
   optenerOrdenPiloto,
+  getRutasAutorizadas,
   optenerOrdenUsuario,
 };

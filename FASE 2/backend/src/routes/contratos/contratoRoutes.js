@@ -5,12 +5,14 @@ const { requireAuth } = require('../../middlewares/auth/auth.middleware');
 const {
   crearContrato,
   obtenerContrato,
+  obtenerProxNumeroContrato,
   listarContratosPorCliente,
-  listarTodosContratos,  // NUEVO - Agregar esta importación
+  listarTodosContratos,  
   modificarContrato,
   validarCliente,
   agregarDescuento,
-  agregarRuta
+  agregarRuta,
+  obtenerEstadisticasDashboard
 } = require('../../controllers/contratos/contratoController');
 
 /**
@@ -20,10 +22,22 @@ const {
 router.post('/', requireAuth, crearContrato);
 
 /**
+ * GET /api/contratos/estadisticas/dashboard
+ * @description Obtiene estadísticas del dashboard logístico
+ */
+router.get('/estadisticas/dashboard', requireAuth, obtenerEstadisticasDashboard);
+
+/**
+ * GET /api/contratos/obtener-numero-proximo
+ * @description Obtiene el próximo número de contrato a generar
+ */
+router.get('/obtener-numero-proximo', requireAuth, obtenerProxNumeroContrato);
+
+/**
  * GET /api/contratos
  * @description Lista todos los contratos del sistema (para vista de logística)
  */
-router.get('/', requireAuth, listarTodosContratos);  // Esta línea ahora funciona
+router.get('/', requireAuth, listarTodosContratos);
 
 /**
  * GET /api/contratos/validar/:cliente_id

@@ -1,6 +1,7 @@
 "use strict";
 const { sql, getConnection } = require("../../config/db");
 
+
 async function obtenerContextoValidacion(cliente_id, origen, destino, peso) {
   const pool = await getConnection();
   const result = await pool
@@ -46,6 +47,18 @@ async function obtenerContextoValidacion(cliente_id, origen, destino, peso) {
                                    AND ct.contrato_id = @v_contrato_id
       WHERE @peso <= t.limite_peso_ton
       ORDER BY t.limite_peso_ton ASC;
+
+      -- 6. Descuento Especial (Recordset 4)
+        -- Buscamos si hay un descuento para ese contrato y ese tipo de unidad específico
+        SELECT TOP 1 porcentaje_descuento
+        FROM descuentos_contrato
+        WHERE contrato_id = @v_contrato_id 
+          AND tipo_unidad = (
+              SELECT TOP 1 tipo_unidad 
+              FROM tarifario 
+              WHERE @peso <= limite_peso_ton 
+              ORDER BY limite_peso_ton ASC
+          );
     `);
 
   return {
@@ -55,6 +68,9 @@ async function obtenerContextoValidacion(cliente_id, origen, destino, peso) {
       : 0,
     ruta: result.recordsets[2][0] || null,
     tarifa: result.recordsets[3][0] || null,
+    descuento: result.recordsets[4][0]
+      ? result.recordsets[4][0].porcentaje_descuento
+      : 0,
   };
 }
 
@@ -73,17 +89,18 @@ async function insertarOrden(datos) {
     .input("tipo_mercancia", sql.NVarChar, datos.tipo_mercancia)
     .input("peso_estimado", sql.Decimal(10, 2), datos.peso_estimado)
     .input("costo", sql.Decimal(10, 2), datos.costo)
-    .input("creado_por", sql.Int, datos.creado_por).query(`
+    .input("creado_por", sql.Int, datos.creado_por)
+    .input("tarifa_aplicada", sql.Numeric(10, 2), datos.tarifa_aplicada).query(`
       BEGIN TRANSACTION;
       BEGIN TRY
         -- 1. Insertar la nueva orden
         INSERT INTO ordenes (
             numero_orden, cliente_id, contrato_id, origen, destino, 
-            tipo_mercancia, peso_estimado, costo, creado_por, estado
+            tipo_mercancia, peso_estimado, costo, creado_por, estado, tarifa_aplicada
         )
         VALUES (
             @numero_orden, @cliente_id, @contrato_id, @origen, @destino, 
-            @tipo_mercancia, @peso_estimado, @costo, @creado_por, 'PENDIENTE_PLANIFICACION'
+            @tipo_mercancia, @peso_estimado, @costo, @creado_por, 'PENDIENTE_PLANIFICACION', @tarifa_aplicada
         );
 
         -- 2. Actualizar el saldo usado en el contrato
@@ -120,7 +137,7 @@ async function optenerOrdenPendiente() {
   const result = await pool.request().query(
     `select id, 
               numero_orden,
-              (select nombre from usuarios where ordenes.cliente_id = usuarios.id), 
+              (select nombre from usuarios where ordenes.cliente_id = usuarios.id) AS nombre_cliente, 
               origen, 
               destino, 
               tipo_mercancia, 
@@ -284,6 +301,31 @@ async function getPilotos() {
   return result.recordset;
 }
 
+async function getRutasAutorizadas(id_cliente) {
+  try {
+    const pool = await getConnection();
+    const result = await pool.request().input("id_cliente", sql.Int, id_cliente)
+      .query(`
+        SELECT origen, destino, tipo_carga
+        FROM rutas_autorizadas
+        WHERE activa = 1 
+        AND contrato_id = (
+            SELECT TOP 1 id 
+            FROM contratos 
+            WHERE cliente_id = @id_cliente 
+            AND estado = 'VIGENTE' 
+            ORDER BY fecha_inicio DESC
+        );
+      `);
+
+    // Retornamos todas las filas del primer (y único) recordset
+    return result.recordset.length > 0 ? result.recordset : [];
+  } catch (error) {
+    console.error("Error al obtener rutas autorizadas:", error);
+    throw error;
+  }
+}
+
 async function formalizarSalidaPatio(ordenId, datos) {
   const pool = await getConnection();
   const result = await pool
@@ -395,6 +437,8 @@ async function registrarEventoBitacora(datos) {
   return result.recordset[0];
 }
 
+
+
 async function finalizarEntrega(ordenId, rutasArchivos) {
   const pool = await getConnection();
   const transaction = new sql.Transaction(pool);
@@ -478,6 +522,27 @@ async function finalizarEntrega(ordenId, rutasArchivos) {
       `);
 
     await transaction.commit();
+
+     // ── NUEVO: generar borrador de factura automáticamente ──────────────
+  // Se ejecuta FUERA de la transacción para no bloquear el cierre.
+  // Si falla, solo se loguea; el agente puede generarlo manualmente.
+  try {
+    const FacturaFEL = require("../facturacion/FacturaFel");
+
+    // usuario_id: puede ser null aquí; el servicio lo acepta para el
+    // generarBorrador porque no lo necesita para insertar en BD.
+    await FacturaFEL.generarBorradorDesdeOrden(parseInt(ordenId));
+    } catch (facturaError) {
+    console.error(
+      `[orden.store] No se generó borrador automático para orden ${ordenId}:`,
+      facturaError.message
+    );
+    // NO relanzar: el cierre de la orden ya fue exitoso
+  }
+  // ────────────────────────────────────────────────────────────────────
+
+
+
     return { ordenId, vehiculoLiberado: vehiculoId, estadoFinal: "CERRADA" };
   } catch (error) {
     if (transaction) await transaction.rollback();
@@ -500,5 +565,6 @@ module.exports = {
   optenerOrdenPendiente,
   optenerOrdenPlanificada,
   optenerOrdenPiloto,
+  getRutasAutorizadas,
   optenerOrdenUsuario,
 };

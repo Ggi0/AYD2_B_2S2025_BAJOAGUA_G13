@@ -1,15 +1,20 @@
+// backend/src/models/auth/user.store.js
 "use strict";
 
 const { sql, getConnection } = require("../../config/db");
 
+// Actualizar mapeo de roles de aplicación a base de datos
 const APP_TO_DB_ROLE = {
   cliente: "CLIENTE_CORPORATIVO",
   piloto: "PILOTO",
   finanzas: "AGENTE_FINANCIERO",
   gerencia: "GERENCIA",
   operativo: "AGENTE_OPERATIVO",
+  agente_logistico: "AGENTE_LOGISTICO",
+  patio: "ENCARGADO_PATIO",  // Agregar mapeo para patio
 };
 
+// Actualizar mapeo de roles de base de datos a aplicación
 const DB_TO_APP_ROLE = {
   CLIENTE_CORPORATIVO: "cliente",
   PILOTO: "piloto",
@@ -17,8 +22,8 @@ const DB_TO_APP_ROLE = {
   AREA_CONTABLE: "finanzas",
   GERENCIA: "gerencia",
   AGENTE_OPERATIVO: "operativo",
-  AGENTE_LOGISTICO: "operativo",
-  ENCARGADO_PATIO: "operativo",
+  AGENTE_LOGISTICO: "logistico",
+  ENCARGADO_PATIO: "patio",  // Agregar mapeo para patio
 };
 
 function mapDbRoleToApp(dbRole) {
@@ -70,7 +75,6 @@ function mapDbRowToUser(row) {
 }
 
 async function findByEmail(email) {
-  // Punto de lectura para login/registro: busca usuario por email único.
   const pool = await getConnection();
 
   const result = await pool
@@ -96,10 +100,12 @@ async function findByEmail(email) {
 }
 
 async function createUser(payload) {
-  // Punto de escritura para registro: inserta usuario y retorna fila creada.
   const fullName = `${payload.nombres || ""} ${payload.apellidos || ""}`.trim();
   const nombre = fullName || String(payload.nombres || "Usuario").trim();
   const dbRole = mapAppRoleToDb(payload.role);
+
+  // Para el rol ENCARGADO_PATIO, crear como ACTIVO directamente
+  const estadoInicial = dbRole === 'CLIENTE_CORPORATIVO' ? 'PENDIENTE_ACEPTACION' : 'ACTIVO';
 
   const pool = await getConnection();
 
@@ -111,6 +117,7 @@ async function createUser(payload) {
     .input("telefono", sql.NVarChar(20), payload.telefono || null)
     .input("password_hash", sql.NVarChar(255), payload.passwordHash)
     .input("tipo_usuario", sql.NVarChar(30), dbRole)
+    .input("estado", sql.NVarChar(20), estadoInicial)
     .query(`
       INSERT INTO usuarios (
         nit,
@@ -139,7 +146,7 @@ async function createUser(payload) {
         @telefono,
         @password_hash,
         @tipo_usuario,
-        'ACTIVO',
+        @estado,
         NULL
       )
     `);

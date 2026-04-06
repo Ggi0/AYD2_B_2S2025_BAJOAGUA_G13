@@ -13,20 +13,46 @@
  * @requires models/auditoria/Auditoria - registro de cambios
  */
 
-const Contrato       = require('../../models/contratos/Contrato');
-const ContratoTarifa = require('../../models/contratos/ContratoTarifa');
-const Descuento      = require('../../models/contratos/Descuento');
-const RutaAutorizada = require('../../models/contratos/RutaAutorizada');
-const Usuario        = require('../../models/usuarios/Usuario');
-const Auditoria      = require('../../models/auditoria/Auditoria');
+const Contrato           = require('../../models/contratos/Contrato');
+const ContratoTarifa     = require('../../models/contratos/ContratoTarifa');
+const Descuento          = require('../../models/contratos/Descuento');
+const RutaAutorizada     = require('../../models/contratos/RutaAutorizada');
+const Usuario            = require('../../models/usuarios/Usuario');
+const Auditoria          = require('../../models/auditoria/Auditoria');
+const FacturaFEL         = require('../../models/contratos/FacturaFEL');
+const CuentasPorCobrar   = require('../../models/contratos/CuentasPorCobrar');
+const { notificarBloqueoPorCredito } = require('../../utils/notificaciones');
+
+/**
+ * @async
+ * @function generarNumeroContrato
+ * @description Genera automáticamente un número único de contrato con formato CTR-YYYY-NNNNN
+ * @returns {Promise<string>} Número de contrato generado (ej: CTR-2026-00001)
+ * @throws {Error} Si hay error al buscar el último contrato
+ */
+const generarNumeroContrato = async () => {
+  const year = new Date().getFullYear();
+  const ultimoContrato = await Contrato.obtenerUltimoContrato();
+  
+  let secuencial = 1;
+  if (ultimoContrato && ultimoContrato.numero_contrato) {
+    const parte = ultimoContrato.numero_contrato.split('-');
+    if (parte[1] === String(year)) {
+      secuencial = parseInt(parte[2]) + 1;
+    }
+  }
+  
+  return `CTR-${year}-${String(secuencial).padStart(5, '0')}`;
+};
 
 /**
  * @async
  * @function crearContrato
  * @description Crea un nuevo contrato de transporte para un cliente corporativo
  * Valida cliente activo, plazo de pago, fechas, y crea tarifas/rutas si se proporcionan
+ * El número de contrato se genera automáticamente si no se proporciona
  * @param {Object} datos - Datos del contrato
- * @param {string} datos.numero_contrato - Número identificador único del contrato
+ * @param {string} [datos.numero_contrato] - Número identificador único (se genera automáticamente si no se proporciona)
  * @param {number} datos.cliente_id - ID del cliente corporativo
  * @param {string} datos.fecha_inicio - Fecha de inicio (YYYY-MM-DD)
  * @param {string} datos.fecha_fin - Fecha de finalización (debe ser > fecha_inicio)
@@ -40,7 +66,12 @@ const Auditoria      = require('../../models/auditoria/Auditoria');
  * @throws {Error} Si cliente no existe, no es corporativo, inactivo o datos inválidos
  */
 const crearContrato = async (datos, usuario_ejecutor, ip) => {
-  const { numero_contrato, cliente_id, fecha_inicio, fecha_fin, limite_credito, plazo_pago, tarifas, rutas } = datos;
+  let { numero_contrato, cliente_id, fecha_inicio, fecha_fin, limite_credito, plazo_pago, tarifas, rutas, descuentos } = datos;
+
+  // Generar número de contrato automáticamente si no se proporciona
+  if (!numero_contrato) {
+    numero_contrato = await generarNumeroContrato();
+  }
 
   const cliente = await Usuario.buscarPorId(cliente_id);
   if (!cliente) throw { status: 404, mensaje: 'Cliente no encontrado' };
@@ -73,6 +104,18 @@ const crearContrato = async (datos, usuario_ejecutor, ip) => {
   if (rutas && rutas.length > 0) {
     for (const ruta of rutas) {
       await RutaAutorizada.crearRuta({ contrato_id: contrato.id, ...ruta });
+    }
+  }
+
+  if (descuentos && descuentos.length > 0) {
+    for (const descuento of descuentos) {
+      await Descuento.crearDescuento({
+        contrato_id: contrato.id,
+        tipo_unidad: descuento.tipo_unidad.toUpperCase(),
+        porcentaje_descuento: descuento.porcentaje_descuento,
+        observacion: descuento.observacion || null,
+        autorizado_por: usuario_ejecutor
+      });
     }
   }
 
@@ -123,11 +166,10 @@ const obtenerContrato = async (id) => {
  * @throws {Error} Si cliente no existe (404)
  */
 // backend/src/services/contratos/contratoService.js
-const listarContratosPorCliente = async (clienteId) => {
-  console.log('[contratoService] listarContratosPorCliente - clienteId:', clienteId);
-  const result = await Contrato.listarPorCliente(clienteId);
-  console.log('[contratoService] Resultado:', result);
-  return result;
+const listarContratosPorCliente = async (cliente_id) => {
+  const cliente = await Usuario.buscarPorId(cliente_id);
+  if (!cliente) throw { status: 404, mensaje: 'Cliente no encontrado' };
+  return await Contrato.listarPorCliente(cliente_id);
 };
 
 /**
@@ -178,51 +220,171 @@ const modificarContrato = async (id, datos, usuario_ejecutor, ip) => {
 /**
  * @async
  * @function validarCliente
- * @description Valida si un cliente puede realizar transporte
- * Verifica estado, contrato vigente, límite de crédito, ruta autorizada y tarifa aplicable
+ * @description Valida si un cliente puede realizar transporte (FILTRO COMERCIAL COMPLETO)
+ * Verifica:
+ *   1. Estado del cliente (BLOQUEADO/INACTIVO)
+ *   2. Contrato vigente y NO expirado
+ *   3. Facturas certificadas sin pagar
+ *   4. Cuentas por cobrar vencidas
+ *   5. Límite de crédito no excedido
+ *   6. Ruta autorizada en contrato
+ *   7. Tarifa y descuento aplicables
+ * 
+ * BLOQUEO AUTOMÁTICO: Si cliente excede límite de crédito, es bloqueado automáticamente
  * @param {number} cliente_id - ID del cliente a validar
  * @param {string} [origen] - Ciudad/punto de origen del transporte
  * @param {string} [destino] - Ciudad/punto de destino del transporte
  * @param {string} [tipo_unidad] - Tipo de unidad (LIGERA, PESADA, CABEZAL)
  * @returns {Promise<Object>} Objeto con habilitado (boolean), motivo si está deshabilitado, y detalles de cliente/contrato/tarifa si está habilitado
- * @note Si cliente excede límite de crédito, es bloqueado automáticamente
  */
 const validarCliente = async (cliente_id, origen, destino, tipo_unidad) => {
+  // ============================================================
+  // VALIDACIÓN 1: Estado del cliente
+  // ============================================================
   const cliente = await Usuario.buscarPorId(cliente_id);
   if (!cliente) return { habilitado: false, motivo: 'Cliente no encontrado' };
   if (cliente.estado === 'BLOQUEADO') return { habilitado: false, motivo: 'Cliente bloqueado' };
   if (cliente.estado === 'INACTIVO')  return { habilitado: false, motivo: 'Cliente inactivo' };
 
-  const contrato = await Contrato.buscarVigentePorCliente(cliente_id);
-  if (!contrato) return { habilitado: false, motivo: 'El cliente no tiene un contrato vigente' };
-
-  if (contrato.saldo_usado >= contrato.limite_credito) {
-    await Usuario.cambiarEstado(cliente_id, 'BLOQUEADO');
-    return { habilitado: false, motivo: 'Límite de crédito excedido. Cliente bloqueado automáticamente' };
+  // VALIDACIÓN CRÍTICA: Solo CLIENTE_CORPORATIVO puede tener contratos
+  // (CA-04: Solo corporativos tienen contratos y pueden ser validados)
+  if (cliente.tipo_usuario !== 'CLIENTE_CORPORATIVO') {
+    return { habilitado: false, motivo: 'Solo clientes corporativos pueden tener contratos' };
   }
 
+  // ============================================================
+  // VALIDACIÓN 2: TODOS los contratos vigentes y no expirados
+  // ============================================================
+  const contratos = await Contrato.buscarTodosPorCliente(cliente_id);
+  if (!contratos || contratos.length === 0) {
+    return { habilitado: false, motivo: 'El cliente no tiene un contrato vigente' };
+  }
+
+  // Validar que al menos UNO de los contratos no esté expirado y actualizar estados si es necesario
+  const contratosActivos = [];
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+
+  for (const contrato of contratos) {
+    const fechaFin = new Date(contrato.fecha_fin);
+    if (fechaFin < hoy) {
+      // Contrato expiró, cambiar estado
+      await Contrato.cambiarEstado(contrato.id, 'EXPIRADO');
+    } else {
+      contratosActivos.push(contrato);
+    }
+  }
+
+  if (contratosActivos.length === 0) {
+    return { habilitado: false, motivo: 'Todos los contratos del cliente han expirado' };
+  }
+
+  // Usar el contrato más reciente para mostrar en respuesta
+  const contratoActual = contratosActivos[0];
+
+  // ============================================================
+  // VALIDACIÓN 3: Facturas certificadas sin pagar (Bloqueo Automático)
+  // ============================================================
+  const facturasVencidas = await FacturaFEL.traerFacturasCertificadas(cliente_id);
+  if (facturasVencidas && facturasVencidas.length > 0) {
+    return { 
+      habilitado: false, 
+      motivo: `Cliente tiene ${facturasVencidas.length} factura(s) certificada(s) sin pagar`,
+      facturas_pendientes: facturasVencidas
+    };
+  }
+
+  // ============================================================
+  // VALIDACIÓN 4: Cuentas por cobrar vencidas (Bloqueo Automático)
+  // ============================================================
+  const cuentasVencidas = await CuentasPorCobrar.traerCuentasVencidas(cliente_id);
+  if (cuentasVencidas && cuentasVencidas.length > 0) {
+    return { 
+      habilitado: false, 
+      motivo: `Cliente tiene ${cuentasVencidas.length} cuenta(s) por cobrar vencida(s)`,
+      cuentas_vencidas: cuentasVencidas
+    };
+  }
+
+  // ============================================================
+  // VALIDACIÓN 5: Límite de crédito NO EXCEDIDO EN TODOS LOS CONTRATOS (Bloqueo Automático)
+  // ============================================================
+  // Calcular totales de TODOS los contratos activos
+  const totalLimiteCredito = contratosActivos.reduce((sum, c) => sum + (c.limite_credito || 0), 0);
+  const totalSaldoUsado = contratosActivos.reduce((sum, c) => sum + (c.saldo_usado || 0), 0);
+  const totalCreditoDisponible = totalLimiteCredito - totalSaldoUsado;
+
+  if (totalSaldoUsado >= totalLimiteCredito) {
+    // Doble validación: Solo CLIENTE_CORPORATIVO puede ser bloqueado (CA-04)
+    if (cliente.tipo_usuario === 'CLIENTE_CORPORATIVO') {
+      await Usuario.cambiarEstado(cliente_id, 'BLOQUEADO');
+      
+      // Enviar notificación de bloqueo automático
+      try {
+        await notificarBloqueoPorCredito(cliente, contratoActual);
+      } catch (errorCorreo) {
+        // No bloquear la operación si hay error en el correo
+        console.error(`[validarCliente] Error al enviar notificación: ${errorCorreo.message}`);
+      }
+    }
+    
+    return { 
+      habilitado: false, 
+      motivo: `Límite de crédito excedido en suma de contratos (Total usado: Q${totalSaldoUsado.toFixed(2)} / Q${totalLimiteCredito.toFixed(2)}). Cliente bloqueado automáticamente`,
+      contratos_resumen: contratosActivos.map(c => ({
+        numero_contrato: c.numero_contrato,
+        limite_credito: c.limite_credito,
+        saldo_usado: c.saldo_usado
+      }))
+    };
+  }
+
+  // ============================================================
+  // VALIDACIÓN 6: Ruta autorizada en contrato
+  // ============================================================
   if (origen && destino) {
-    const ruta = await RutaAutorizada.verificarRuta(contrato.id, origen, destino);
+    const ruta = await RutaAutorizada.verificarRuta(contratoActual.id, origen, destino);
     if (!ruta) return { habilitado: false, motivo: `La ruta ${origen} → ${destino} no está autorizada en el contrato` };
   }
 
+  // ============================================================
+  // VALIDACIÓN 7: Tarifa y descuento aplicables
+  // ============================================================
   let tarifa   = null;
   let descuento = null;
   if (tipo_unidad) {
-    tarifa    = await ContratoTarifa.buscarPorContratoYTipo(contrato.id, tipo_unidad);
-    descuento = await Descuento.buscarPorContratoYTipo(contrato.id, tipo_unidad);
+    tarifa    = await ContratoTarifa.buscarPorContratoYTipo(contratoActual.id, tipo_unidad);
+    descuento = await Descuento.buscarPorContratoYTipo(contratoActual.id, tipo_unidad);
   }
 
+  // ============================================================
+  // CLIENTE HABILITADO - Retornar detalles completos
+  // ============================================================
   return {
     habilitado: true,
-    cliente: { id: cliente.id, nombre: cliente.nombre, estado: cliente.estado },
+    cliente: { id: cliente.id, nombre: cliente.nombre, estado: cliente.estado, tipo_usuario: cliente.tipo_usuario },
     contrato: {
-      id:               contrato.id,
-      numero_contrato:  contrato.numero_contrato,
-      limite_credito:   contrato.limite_credito,
-      saldo_usado:      contrato.saldo_usado,
-      saldo_disponible: contrato.limite_credito - contrato.saldo_usado,
-      plazo_pago:       contrato.plazo_pago
+      id:               contratoActual.id,
+      numero_contrato:  contratoActual.numero_contrato,
+      fecha_fin:        contratoActual.fecha_fin,
+      limite_credito:   contratoActual.limite_credito,
+      saldo_usado:      contratoActual.saldo_usado,
+      saldo_disponible: contratoActual.limite_credito - contratoActual.saldo_usado,
+      plazo_pago:       contratoActual.plazo_pago
+    },
+    contratos_resumen: {
+      total_limite_credito: totalLimiteCredito,
+      total_saldo_usado: totalSaldoUsado,
+      total_saldo_disponible: totalCreditoDisponible,
+      cantidad_contratos: contratosActivos.length,
+      contratos: contratosActivos.map(c => ({
+        numero_contrato: c.numero_contrato,
+        limite_credito: c.limite_credito,
+        saldo_usado: c.saldo_usado,
+        saldo_disponible: c.limite_credito - c.saldo_usado,
+        fecha_fin: c.fecha_fin,
+        plazo_pago: c.plazo_pago
+      }))
     },
     tarifa:    tarifa    ? { tipo_unidad: tarifa.tipo_unidad, costo_km_negociado: tarifa.costo_km_negociado, limite_peso_ton: tarifa.limite_peso_ton } : null,
     descuento: descuento ? { porcentaje_descuento: descuento.porcentaje_descuento } : null
@@ -238,26 +400,57 @@ const validarCliente = async (cliente_id, origen, destino, tipo_unidad) => {
  * @param {Object} datos - Datos del descuento
  * @param {string} datos.tipo_unidad - Tipo de unidad: LIGERA, PESADA, CABEZAL
  * @param {number} datos.porcentaje_descuento - Porcentaje de descuento (0-100)
+ * @param {string} [datos.observacion] - Observación o razón del descuento
  * @param {number} usuario_ejecutor - ID del usuario que autoriza (para auditoría)
  * @param {string} ip - Dirección IP del cliente (para auditoría)
  * @returns {Promise<Object>} Descuento creado
- * @throws {Error} Si contrato no existe o no está vigente
+ * @throws {Error} Si contrato no existe, no está vigente, o datos son inválidos
  */
 const agregarDescuento = async (contrato_id, datos, usuario_ejecutor, ip) => {
+  const { tipo_unidad, porcentaje_descuento } = datos;
+
+  // Validar contrato
   const contrato = await Contrato.buscarPorId(contrato_id);
   if (!contrato) throw { status: 404, mensaje: 'Contrato no encontrado' };
   if (contrato.estado !== 'VIGENTE') {
     throw { status: 400, mensaje: 'Solo se pueden agregar descuentos a contratos vigentes' };
   }
 
-  const descuento = await Descuento.crearDescuento({ contrato_id, ...datos, autorizado_por: usuario_ejecutor });
+  // Validar tipo de unidad
+  const tiposValidos = ['LIGERA', 'PESADA', 'CABEZAL'];
+  const tipoNormalizado = tipo_unidad.toUpperCase();
+  if (!tiposValidos.includes(tipoNormalizado)) {
+    throw { status: 400, mensaje: `Tipo de unidad inválido. Debe ser: ${tiposValidos.join(', ')}` };
+  }
+
+  // Validar rango de descuento
+  if (porcentaje_descuento < 0 || porcentaje_descuento > 100) {
+    throw { status: 400, mensaje: 'El descuento debe estar entre 0 y 100%' };
+  }
+
+  // Verificar que no exista descuento duplicado
+  const descuentoExistente = await Descuento.buscarPorContratoYTipo(contrato_id, tipoNormalizado);
+  if (descuentoExistente) {
+    throw { 
+      status: 409, 
+      mensaje: `Ya existe un descuento para ${tipoNormalizado} en este contrato. Puedes actualizar el existente.` 
+    };
+  }
+
+  const descuento = await Descuento.crearDescuento({ 
+    contrato_id, 
+    tipo_unidad: tipoNormalizado,
+    porcentaje_descuento,
+    observacion: datos.observacion || null,
+    autorizado_por: usuario_ejecutor 
+  });
 
   await Auditoria.registrar({
     tabla_afectada: 'descuentos_contrato',
     accion:         'CREATE',
     registro_id:    descuento.id,
     usuario_id:     usuario_ejecutor,
-    descripcion:    `Descuento especial agregado al contrato ${contrato.numero_contrato}`,
+    descripcion:    `Descuento especial de ${porcentaje_descuento}% para ${tipoNormalizado} agregado al contrato ${contrato.numero_contrato}`,
     datos_nuevos:   descuento,
     ip_origen:      ip
   });
@@ -301,13 +494,87 @@ const agregarRuta = async (contrato_id, datos, usuario_ejecutor, ip) => {
   return ruta;
 };
 
+/**
+ * @async
+ * @function obtenerProxNumeroContrato
+ * @description Obtiene el próximo número de contrato a generar
+ * @returns {Promise<Object>} Objeto con el próximo número
+ */
+const obtenerProxNumeroContrato = async () => {
+  const numeroContrato = await generarNumeroContrato();
+  return { numero_contrato: numeroContrato };
+};
+
+/**
+ * Obtiene estadísticas del dashboard logístico
+ * @async
+ * @returns {Promise<Object>} Estadísticas consolidadas
+ */
+const obtenerEstadisticasDashboard = async () => {
+  try {
+    const totalContratosResult = await Contrato.listarTodos();
+    const totalContratos = totalContratosResult.length;
+
+    const vigentes = totalContratosResult.filter(c => c.estado === 'VIGENTE').length;
+    const vencidos = totalContratosResult.filter(c => c.estado === 'VENCIDO').length;
+    const cancelados = totalContratosResult.filter(c => c.estado === 'CANCELADO').length;
+
+    const contratosVigentes = totalContratosResult.filter(c => c.estado === 'VIGENTE');
+    const totalCredito = contratosVigentes.reduce((sum, c) => sum + (c.limite_credito || 0), 0);
+    const totalUsado = contratosVigentes.reduce((sum, c) => sum + (c.saldo_usado || 0), 0);
+    const creditoDisponible = totalCredito - totalUsado;
+
+    const { getConnection } = require('../../config/db');
+    const pool = await getConnection();
+    
+    const resultQuery = await pool.request()
+      .query(`SELECT COUNT(*) as cantidad FROM usuarios WHERE estado = 'ACTIVO' AND tipo_usuario = 'CLIENTE_CORPORATIVO'`);
+    
+    console.log('[Dashboard] Query ejecutada exitosamente');
+    console.log('[Dashboard] Recordset recibido:', resultQuery.recordset);
+    
+    let totalClientesActivos = 0;
+    if (resultQuery.recordset && resultQuery.recordset.length > 0) {
+      totalClientesActivos = resultQuery.recordset[0].cantidad || 0;
+      console.log('[Dashboard] Cantidad de clientes activos extraída:', totalClientesActivos);
+    } else {
+      console.log('[Dashboard] Recordset vacío o sin datos');
+    }
+
+    console.log('[Dashboard] Retornando estadísticas:', {
+      totalContratos,
+      contratosVigentes: vigentes,
+      clientesActivos: totalClientesActivos
+    });
+
+    return {
+      totalContratos,
+      contratosVigentes: vigentes,
+      contratosVencidos: vencidos,
+      contratosCancelados: cancelados,
+      totalCreditoDisponible: creditoDisponible,
+      totalCreditoUsado: totalUsado,
+      clientesActivos: totalClientesActivos
+    };
+  } catch (error) {
+    console.error('[Dashboard ERROR] Error al obtener estadísticas:', error);
+    throw {
+      status: 500,
+      mensaje: 'Error al obtener estadísticas del dashboard'
+    };
+  }
+};
+
 module.exports = {
   crearContrato,
   obtenerContrato,
   listarContratosPorCliente,
-  listarTodosContratos,  // NUEVO
+  listarTodosContratos,  
   modificarContrato,
   validarCliente,
   agregarDescuento,
-  agregarRuta
+  agregarRuta,
+  generarNumeroContrato,
+  obtenerProxNumeroContrato,
+  obtenerEstadisticasDashboard
 };
