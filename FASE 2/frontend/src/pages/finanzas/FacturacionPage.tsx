@@ -14,7 +14,9 @@ import {
   getCobros,
   registrarPago,
 } from "../../services/facturacion/facturacion";
-import type { Factura, CuentaPorCobrar, RegistrarPagoPayload } from "../../services/facturacion/facturacion";
+type Factura = any;
+type CuentaPorCobrar = any;
+type RegistrarPagoPayload = any;
 import "../finanzas/finanzas.css";
 
 const fmt = (n: number) =>

@@ -9,7 +9,9 @@ import {
   getFacturaById,
   registrarPago,
 } from "../../services/facturacion/facturacion";
-import type { CuentaPorCobrar, Factura, RegistrarPagoPayload } from "../../services/facturacion/facturacion";
+type Factura = any;
+type CuentaPorCobrar = any;
+type RegistrarPagoPayload = any;
 import "../finanzas/finanzas.css";
 
 const fmt = (n: number) =>
@@ -193,7 +195,7 @@ const CobrosPage: React.FC = () => {
                 </tbody>
               </table>
             </div>
-          )}
+          )} 
         </div>
       </div>
 

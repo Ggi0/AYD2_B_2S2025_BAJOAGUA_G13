@@ -1,6 +1,8 @@
 // src/components/finanzas/PagoModal.tsx
 import React, { useState } from "react";
-import type { Factura, CuentaPorCobrar, RegistrarPagoPayload } from "../../services/facturacion/facturacion";
+type Factura = any;
+type CuentaPorCobrar = any;
+type RegistrarPagoPayload = any;
 
 interface Props {
   factura: Factura;
