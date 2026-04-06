@@ -27,7 +27,6 @@
 - CDU001.1 – Registrar Usuario
 - CDU001.2 – Consultar Usuario
 - CDU001.3 – Modificar Usuario
-- CDU001.4 – Gestionar Credenciales
 - CDU001.5 – Bloquear / Desactivar Usuario
 
 **Gestión de Contratos:**
@@ -46,11 +45,10 @@
 ![alt text](<../images/CDU1/casos expandidos cdu1.drawio.png>)
 
 > Este diagrama muestra todos los casos de uso expandidos del CDU001 con sus relaciones:
-> - **Agente Operativo** interactúa con: CDU001.1, CDU001.2, CDU001.3, CDU001.4, CDU001.6, CDU001.7, CDU001.8, CDU001.10
-> - **Cliente Corporativo** interactúa con: CDU001.2, CDU001.4, CDU001.12
+> - **Agente Operativo** interactúa con: CDU001.1, CDU001.2, CDU001.3, CDU001.6, CDU001.7, CDU001.8, CDU001.10
+> - **Cliente Corporativo** interactúa con: CDU001.2, CDU001.12
 > - **Área Contable** interactúa con: CDU001.2, CDU001.5, CDU001.6, CDU001.7, CDU001.8, CDU001.9, CDU001.10, CDU001.11
 > - **Gerencia** interactúa con: CDU001.2, CDU001.8, CDU001.13
-> - CDU001.1 <<extend>> -> CDU001.4 Gestionar Credenciales
 > - CDU001.2 <<extend>> -> CDU001.3 Modificar Usuario
 > - CDU001.2 <<extend>> -> CDU001.5 Bloquear/Desactivar Usuario
 > - CDU001.6 <<include>> -> CDU001.9 Parametrizar Tarifario
@@ -289,12 +287,12 @@
 
 ## Matriz 2: Actores vs Casos de Uso Expandidos - Gestion de Usuarios
 
-|                         | **CDU001.1** | **CDU001.2** | **CDU001.3** | **CDU001.4** | **CDU001.5** |
-| ----------------------- | ------------ | ------------ | ------------ | ------------ | ------------ |
-| **Agente Operativo**    | X            | X            | X            |              |              |
-| **Cliente Corporativo** |              | X            |              | X            |              |
-| **Area Contable**       |              |              |              |              | X            |
-| **Gerencia**            |              | X            |              |              |              |
+|                         | **CDU001.1** | **CDU001.2** | **CDU001.3** | **CDU001.5** |
+| ----------------------- | ------------ | ------------ | ------------ | ------------ |
+| **Agente Operativo**    | X            | X            | X            |              |
+| **Cliente Corporativo** |              | X            |              |              |
+| **Area Contable**       |              |              |              | X            |
+| **Gerencia**            |              | X            |              |              |
 
 -------------------------------------------------------------------
 
@@ -303,7 +301,7 @@
 |                         | **CDU001.6** | **CDU001.7** | **CDU001.8** | **CDU001.9** | **CDU001.10** | **CDU001.11** | **CDU001.12** | **CDU001.13** |
 | ----------------------- | ------------ | ------------ | ------------ | ------------ | ------------- | ------------- | ------------- | ------------- |
 | **Agente Operativo**    | X            | X            | X            |              | X             |               |               |               |
-| **Area Contable**       |              |              | X            | X            | X             | X             |               |               |
+| **Area Contable**       | X            | X            | X            | X            | X             | X             |               |               |
 | **Gerencia**            |              |              | X            |              |               |               |               | X             |
 | **Cliente Corporativo** |              |              |              |              |               |               | X             |               |
 
