@@ -156,20 +156,24 @@ async function getKpis({ desde, hasta, sede }) {
 
   const sedeCase = buildSedeCaseForOrders("o");
 
-  // Se usa historial_cliente + orden_kpi para métricas financieras y operativas.
+  // Se usan ordenes + facturas_fel + orden_kpi para métricas financieras y operativas.
   const kpiQuery = `
     WITH base AS (
       SELECT
         ${sedeCase} AS sede,
-        ISNULL(h.monto_facturado, 0) AS ingreso,
-        ISNULL(h.gasto_operativo, 0) AS costo,
+        ISNULL(f.ingreso_total, 0) AS ingreso,
+        ISNULL(o.costo, 0) AS costo,
         ISNULL(o.tiempo_estimado, ISNULL(k.tiempo_planificado, 0)) AS tiempo_pactado,
         ISNULL(k.tiempo_real, 0) AS tiempo_real,
         ISNULL(k.retraso, 0) AS retraso
-      FROM historial_cliente h
-      INNER JOIN ordenes o ON o.id = h.orden_id
+      FROM ordenes o
+      LEFT JOIN (
+        SELECT orden_id, SUM(ISNULL(total_factura, 0)) AS ingreso_total
+        FROM facturas_fel
+        GROUP BY orden_id
+      ) f ON f.orden_id = o.id
       LEFT JOIN orden_kpi k ON k.orden_id = o.id
-      WHERE CAST(h.fecha_registro AS DATE) BETWEEN @desde AND @hasta
+      WHERE CAST(COALESCE(o.fecha_entrega, o.fecha_creacion) AS DATE) BETWEEN @desde AND @hasta
     )
     SELECT
       sede,
@@ -267,16 +271,20 @@ async function getAlertas({ desde, hasta }) {
   // Detecta clientes con caída > 30% de carga en semana actual vs semana previa.
   const bajaCargaQuery = `
     WITH carga_actual AS (
-      SELECT h.cliente_id, SUM(ISNULL(h.volumen_carga_ton, 0)) AS carga_actual
-      FROM historial_cliente h
-      WHERE CAST(h.fecha_registro AS DATE) BETWEEN DATEADD(DAY, -7, @hasta) AND @hasta
-      GROUP BY h.cliente_id
+      SELECT
+        o.cliente_id,
+        SUM(COALESCE(NULLIF(o.peso_real, 0), o.peso_estimado, 0)) AS carga_actual
+      FROM ordenes o
+      WHERE CAST(COALESCE(o.fecha_entrega, o.fecha_creacion) AS DATE) BETWEEN DATEADD(DAY, -7, @hasta) AND @hasta
+      GROUP BY o.cliente_id
     ),
     carga_previa AS (
-      SELECT h.cliente_id, SUM(ISNULL(h.volumen_carga_ton, 0)) AS carga_previa
-      FROM historial_cliente h
-      WHERE CAST(h.fecha_registro AS DATE) BETWEEN DATEADD(DAY, -14, @hasta) AND DATEADD(DAY, -8, @hasta)
-      GROUP BY h.cliente_id
+      SELECT
+        o.cliente_id,
+        SUM(COALESCE(NULLIF(o.peso_real, 0), o.peso_estimado, 0)) AS carga_previa
+      FROM ordenes o
+      WHERE CAST(COALESCE(o.fecha_entrega, o.fecha_creacion) AS DATE) BETWEEN DATEADD(DAY, -14, @hasta) AND DATEADD(DAY, -8, @hasta)
+      GROUP BY o.cliente_id
     )
     SELECT
       u.id AS cliente_id,
@@ -296,11 +304,10 @@ async function getAlertas({ desde, hasta }) {
     WITH rutas AS (
       SELECT
         CONCAT(o.origen, ' -> ', o.destino) AS ruta,
-        SUM(ISNULL(h.gasto_operativo, 0)) AS gasto_total,
-        SUM(NULLIF(h.volumen_carga_ton, 0)) AS volumen_total
-      FROM historial_cliente h
-      INNER JOIN ordenes o ON o.id = h.orden_id
-      WHERE CAST(h.fecha_registro AS DATE) BETWEEN @desde AND @hasta
+        SUM(ISNULL(o.costo, 0)) AS gasto_total,
+        SUM(COALESCE(NULLIF(o.peso_real, 0), o.peso_estimado, 0)) AS volumen_total
+      FROM ordenes o
+      WHERE CAST(COALESCE(o.fecha_entrega, o.fecha_creacion) AS DATE) BETWEEN @desde AND @hasta
       GROUP BY CONCAT(o.origen, ' -> ', o.destino)
     ),
     metricas AS (

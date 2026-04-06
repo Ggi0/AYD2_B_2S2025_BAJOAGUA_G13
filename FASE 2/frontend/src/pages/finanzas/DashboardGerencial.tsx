@@ -56,6 +56,11 @@ const SEDES = [
   { key: "puerto_barrios", label: "Puerto Barrios" },
 ];
 
+function normalizeSedeKey(value?: string) {
+  if (!value) return "";
+  return value.toLowerCase().replace(/\s+/g, "_");
+}
+
 
   
 const SEVERIDAD_COLORS: Record<string, string> = {
@@ -101,15 +106,74 @@ const DashboardGerencial: React.FC = () => {
       ]);
 
       if (corteRes.status === "fulfilled") {
-        const data = corteRes.value.data;
-        setCorte(Array.isArray(data) ? data : data ? [data] : []);
+        const payload = corteRes.value.data || {};
+
+        if (Array.isArray(payload)) {
+          setCorte(payload);
+        } else if (Array.isArray(payload.porSede)) {
+          setCorte(
+            payload.porSede.map((item: any) => ({
+              sede: item.sede,
+              total_ordenes: item.totalOrdenes,
+              ordenes_entregadas: item.entregadas,
+              ordenes_en_transito: item.enTransito,
+              ordenes_pendientes: Math.max(0, Number(item.totalOrdenes || 0) - Number(item.entregadas || 0) - Number(item.enTransito || 0) - Number(item.cerradas || 0)),
+              total_facturado: item.totalFacturado,
+              total_cobrado: 0,
+            }))
+          );
+        } else {
+          setCorte([]);
+        }
       }
+
       if (kpisRes.status === "fulfilled") {
-        setKpis(kpisRes.value.data || {});
+        const payload = kpisRes.value.data || {};
+
+        if (Array.isArray(payload)) {
+          setKpis(payload[0] || {});
+        } else {
+          const porSede = Array.isArray(payload.porSede) ? payload.porSede : [];
+          const kpiSede = porSede.find((item: any) => normalizeSedeKey(item?.sede) === sedeSeleccionada) || porSede[0] || null;
+
+          setKpis({
+            ingresos: kpiSede?.ingresos ?? payload?.resumen?.ingresos,
+            costos: kpiSede?.costos ?? payload?.resumen?.costos,
+            margen_porcentaje: kpiSede?.rentabilidadPorcentaje ?? payload?.resumen?.rentabilidadPorcentaje,
+            tiempo_promedio_entrega: kpiSede?.tiempoRealPromedio,
+            tiempo_pactado: kpiSede?.tiempoPactadoPromedio ?? kpiSede?.tiempoPlanificadoPromedio,
+            ordenes_a_tiempo: kpiSede?.ordenesATiempo,
+            total_ordenes: kpiSede?.ordenesConMedicion,
+          });
+        }
       }
+
       if (alertasRes.status === "fulfilled") {
-        const data = alertasRes.value.data;
-        setAlertas(Array.isArray(data) ? data : data ? [data] : []);
+        const payload = alertasRes.value.data || {};
+
+        if (Array.isArray(payload)) {
+          setAlertas(payload);
+        } else {
+          const clientes = Array.isArray(payload.clientesBajaCarga)
+            ? payload.clientesBajaCarga.map((item: any) => ({
+                tipo: item.tipo,
+                mensaje: item.mensaje,
+                cliente_nombre: item.cliente,
+                severidad: item.severidad,
+              }))
+            : [];
+
+          const rutas = Array.isArray(payload.rutasExcesoConsumo)
+            ? payload.rutasExcesoConsumo.map((item: any) => ({
+                tipo: item.tipo,
+                mensaje: item.mensaje,
+                ruta: item.ruta,
+                severidad: item.severidad,
+              }))
+            : [];
+
+          setAlertas([...clientes, ...rutas]);
+        }
       }
     } catch {
       setError("Error al cargar el dashboard.");
@@ -139,7 +203,7 @@ const DashboardGerencial: React.FC = () => {
   const maxGanancia = Math.max(...contratos.map((c) => Math.abs(c.ganancia ?? 0)), 1);
 
   // Corte filtrado por sede seleccionada (si el backend devuelve por sede)
-  const corteSede = corte.find((c) => c.sede?.toLowerCase().includes(sedeSeleccionada)) ?? corte[0];
+  const corteSede = corte.find((c) => normalizeSedeKey(c.sede) === sedeSeleccionada) ?? corte[0];
 
   if (loading) {
     return (
