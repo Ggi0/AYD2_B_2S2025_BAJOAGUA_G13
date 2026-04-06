@@ -32,7 +32,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles 
       // Redirigir según el rol del usuario
       if (userRole === 'client' || userRole === 'cliente') {
         return <Navigate to="/client/dashboard" replace />;
-      } else if (userRole === 'logistic' || userRole === 'logistico') {
+      } else if (userRole === 'logistic' || userRole === 'logistico' || userRole === 'agente_logistico' ) {
         return <Navigate to="/logistico/dashboard" replace />;
       } else if (userRole === 'piloto') {
         return <Navigate to="/piloto/dashboard" replace />;

@@ -701,6 +701,67 @@ const obtenerDatosParaBorrador = async (orden_id) => {
   return result.recordset[0];
 };
 
+
+/**
+ * Genera automáticamente un borrador de factura a partir de una orden cerrada.
+ * Usa los métodos existentes del modelo.
+ */
+const generarBorradorDesdeOrden = async (orden_id) => {
+
+  // 1. Verificar si ya existe factura (evitar duplicados)
+  const existente = await buscarPorOrden(orden_id);
+  if (existente) {
+    console.log(`[FacturaFEL] Ya existe factura para orden ${orden_id}`);
+    return existente;
+  }
+
+  // 2. Obtener datos base
+  const datos = await obtenerDatosParaBorrador(orden_id);
+
+  if (!datos) {
+    throw new Error(`No se encontraron datos para generar factura de orden ${orden_id}`);
+  }
+
+  if (!datos.distancia_km) {
+    throw new Error(`La orden ${orden_id} no tiene distancia configurada`);
+  }
+
+  // 3. Cálculos ( lógica de negocio)
+  const bruto = datos.distancia_km * datos.tarifa_aplicada;
+
+  const descuento = datos.porcentaje_descuento
+    ? bruto * (datos.porcentaje_descuento / 100)
+    : 0;
+
+  const subtotal = bruto - descuento;
+  const iva      = subtotal * 0.12;
+  const total    = subtotal + iva;
+
+  // 4. Generar número de factura simple
+  const numeroFactura = `FEL-${Date.now()}`;
+
+  // 5. Crear borrador
+  const borrador = await crearBorrador({
+    orden_id: datos.orden_id,
+    cliente_id: datos.cliente_id,
+    contrato_id: datos.contrato_id,
+    numero_factura: numeroFactura,
+    distancia_km: datos.distancia_km,
+    tarifa_aplicada: datos.tarifa_aplicada,
+    descuento_aplicado: descuento,
+    subtotal,
+    iva,
+    total_factura: total,
+    nit_cliente: datos.cliente_nit,
+    nombre_cliente_facturacion: datos.cliente_nombre,
+  });
+
+  console.log(`[FacturaFEL] Borrador creado para orden ${orden_id}`);
+
+  return borrador;
+};
+
+
 module.exports = {
   // Facturas FEL
   crearBorrador,
@@ -709,6 +770,7 @@ module.exports = {
   buscarPorId,
   buscarPorOrden,
   listar,
+  generarBorradorDesdeOrden,
 
   // Validación FEL
   registrarValidacion,

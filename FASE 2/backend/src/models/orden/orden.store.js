@@ -437,23 +437,6 @@ async function registrarEventoBitacora(datos) {
   return result.recordset[0];
 }
 
-/**
- * Genera el borrador de factura para una orden recién cerrada.
- * Se llama DESPUÉS de que la transacción de cierre de orden hace commit.
- *
- * @param {number} ordenId
- */
-async function generarBorradorPostCierre(ordenId) {
-  // Importación dinámica para evitar dependencias circulares
-  // (orden.store → facturacion.service → contrato.model → ¿orden?)
-  const facturacionService = require("../facturacion/Facturacion");
-
-  // usuario_id = 0 es un placeholder; generarBorrador no lo usa
-  // para ninguna operación en BD (solo se pasaba para logs futuros)
-  await facturacionService.generarBorrador(ordenId, 0);
-
-  console.log(`[orden.store] Borrador de factura generado para orden ${ordenId}`);
-}
 
 
 async function finalizarEntrega(ordenId, rutasArchivos) {
@@ -544,11 +527,12 @@ async function finalizarEntrega(ordenId, rutasArchivos) {
   // Se ejecuta FUERA de la transacción para no bloquear el cierre.
   // Si falla, solo se loguea; el agente puede generarlo manualmente.
   try {
-    const facturacionService = require("../facturacion/FacturaFel");
+    const FacturaFEL = require("../facturacion/FacturaFel");
+
     // usuario_id: puede ser null aquí; el servicio lo acepta para el
     // generarBorrador porque no lo necesita para insertar en BD.
-    await generarBorradorPostCierre(parseInt(ordenId));
-  } catch (facturaError) {
+    await FacturaFEL.generarBorradorDesdeOrden(parseInt(ordenId));
+    } catch (facturaError) {
     console.error(
       `[orden.store] No se generó borrador automático para orden ${ordenId}:`,
       facturaError.message
@@ -578,7 +562,6 @@ module.exports = {
   actualizarRutaTransito,
   registrarEventoBitacora,
   finalizarEntrega,
-  generarBorradorPostCierre,
   optenerOrdenPendiente,
   optenerOrdenPlanificada,
   optenerOrdenPiloto,
