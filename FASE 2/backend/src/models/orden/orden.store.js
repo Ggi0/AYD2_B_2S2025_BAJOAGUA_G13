@@ -1,6 +1,7 @@
 "use strict";
 const { sql, getConnection } = require("../../config/db");
 
+
 async function obtenerContextoValidacion(cliente_id, origen, destino, peso) {
   const pool = await getConnection();
   const result = await pool
@@ -436,6 +437,8 @@ async function registrarEventoBitacora(datos) {
   return result.recordset[0];
 }
 
+
+
 async function finalizarEntrega(ordenId, rutasArchivos) {
   const pool = await getConnection();
   const transaction = new sql.Transaction(pool);
@@ -519,6 +522,27 @@ async function finalizarEntrega(ordenId, rutasArchivos) {
       `);
 
     await transaction.commit();
+
+     // ── NUEVO: generar borrador de factura automáticamente ──────────────
+  // Se ejecuta FUERA de la transacción para no bloquear el cierre.
+  // Si falla, solo se loguea; el agente puede generarlo manualmente.
+  try {
+    const FacturaFEL = require("../facturacion/FacturaFel");
+
+    // usuario_id: puede ser null aquí; el servicio lo acepta para el
+    // generarBorrador porque no lo necesita para insertar en BD.
+    await FacturaFEL.generarBorradorDesdeOrden(parseInt(ordenId));
+    } catch (facturaError) {
+    console.error(
+      `[orden.store] No se generó borrador automático para orden ${ordenId}:`,
+      facturaError.message
+    );
+    // NO relanzar: el cierre de la orden ya fue exitoso
+  }
+  // ────────────────────────────────────────────────────────────────────
+
+
+
     return { ordenId, vehiculoLiberado: vehiculoId, estadoFinal: "CERRADA" };
   } catch (error) {
     if (transaction) await transaction.rollback();

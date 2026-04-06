@@ -22,7 +22,7 @@ const DB_TO_APP_ROLE = {
   AREA_CONTABLE: "finanzas",
   GERENCIA: "gerencia",
   AGENTE_OPERATIVO: "operativo",
-  AGENTE_LOGISTICO: "operativo",
+  AGENTE_LOGISTICO: "logistico",
   ENCARGADO_PATIO: "patio",  // Agregar mapeo para patio
 };
 
