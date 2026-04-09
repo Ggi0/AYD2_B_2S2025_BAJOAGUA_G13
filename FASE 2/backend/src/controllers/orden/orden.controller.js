@@ -169,11 +169,11 @@ async function eventosTransito(req, res) {
 async function actualizarRutaTransitoF(req, res) {
   try {
     const { id } = req.params;
-    // Extraemos las rutas de los archivos
-    const rutasArchivos = req.files.map((f) => f.path);
 
-    // Llamamos al service solo con los datos necesarios
-    const result = await ordenService.finalizarRuta(id, rutasArchivos);
+    const folder = req.query.folder || "evidencias";
+    const rutasRelativas = req.files.map((f) => `${folder}/${f.filename}`);
+
+    const result = await ordenService.finalizarRuta(id, rutasRelativas);
 
     res.status(200).json({ ok: true, data: result });
   } catch (error) {

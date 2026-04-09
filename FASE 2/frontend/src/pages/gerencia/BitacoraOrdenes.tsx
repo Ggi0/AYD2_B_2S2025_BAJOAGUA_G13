@@ -1,21 +1,21 @@
 // src/pages/gerencia/BitacoraOrdenes.tsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { FaSignOutAlt, FaArrowLeft, FaClipboard } from 'react-icons/fa';
+import { FaSignOutAlt, FaArrowLeft, FaClipboard } from "react-icons/fa";
 import EventosOrdenes from "../../components/gerencial/EventosOrdenes";
 
 const BitacoraOrdenes: React.FC = () => {
   const navigate = useNavigate();
   const [desde, setDesde] = useState(
-    new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+    new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
   );
   const [hasta, setHasta] = useState(new Date().toISOString().split("T")[0]);
 
   const handleLogout = () => {
-    localStorage.removeItem('userToken');
-    localStorage.removeItem('userRole');
-    localStorage.removeItem('userEmail');
-    navigate('/login');
+    localStorage.removeItem("userToken");
+    localStorage.removeItem("userRole");
+    localStorage.removeItem("userEmail");
+    navigate("/login");
   };
 
   return (
@@ -26,7 +26,9 @@ const BitacoraOrdenes: React.FC = () => {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <FaClipboard className="text-2xl" />
-              <h1 className="text-2xl font-bold">Bitácora de Eventos - Órdenes</h1>
+              <h1 className="text-2xl font-bold">
+                Bitácora de Eventos - Órdenes
+              </h1>
             </div>
             <p className="text-blue-200 text-sm mt-1">
               Registro de anomalías y eventos detectados en la operación
@@ -34,7 +36,7 @@ const BitacoraOrdenes: React.FC = () => {
           </div>
           <div className="flex gap-2 flex-wrap">
             <button
-              onClick={() => navigate('/Gerencia/dashboad')}
+              onClick={() => navigate("/Gerencia/dashboad")}
               className="flex items-center px-4 py-2 bg-blue-800 text-white rounded-xl hover:bg-blue-700 transition"
             >
               <FaArrowLeft className="mr-2" />
@@ -81,7 +83,11 @@ const BitacoraOrdenes: React.FC = () => {
             <div className="flex items-end">
               <button
                 onClick={() => {
-                  setDesde(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]);
+                  setDesde(
+                    new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+                      .toISOString()
+                      .split("T")[0],
+                  );
                   setHasta(new Date().toISOString().split("T")[0]);
                 }}
                 className="w-full px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"

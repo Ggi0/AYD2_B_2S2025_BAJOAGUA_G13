@@ -1,4 +1,6 @@
 "use strict";
+const fs = require("fs");
+const path = require("path");
 
 const { sql, getConnection } = require("../../config/db");
 
@@ -15,7 +17,11 @@ function parseDateInput(dateText) {
 // Normaliza y valida la sede para filtros del dashboard.
 function normalizeSede(sede) {
   if (!sede) return null;
-  const value = String(sede).trim().toUpperCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  const value = String(sede)
+    .trim()
+    .toUpperCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
 
   const aliases = {
     GUATEMALA: "GUATEMALA",
@@ -26,7 +32,9 @@ function normalizeSede(sede) {
 
   const normalized = aliases[value];
   if (!normalized) {
-    throw new Error("Sede invalida. Valores permitidos: GUATEMALA, XELA, PUERTO BARRIOS");
+    throw new Error(
+      "Sede invalida. Valores permitidos: GUATEMALA, XELA, PUERTO BARRIOS",
+    );
   }
 
   return normalized;
@@ -133,7 +141,7 @@ async function getCorteDiario({ fecha, sede }) {
       acc.totalFacturado += item.totalFacturado;
       return acc;
     },
-    { totalOrdenes: 0, totalFacturas: 0, totalFacturado: 0 }
+    { totalOrdenes: 0, totalFacturas: 0, totalFacturado: 0 },
   );
 
   return {
@@ -206,7 +214,8 @@ async function getKpis({ desde, hasta, sede }) {
   const porSede = rows.map((row) => {
     const ordenesConMedicion = Number(row.ordenes_con_medicion || 0);
     const ordenesATiempo = Number(row.ordenes_a_tiempo || 0);
-    const cumplimiento = ordenesConMedicion > 0 ? (ordenesATiempo / ordenesConMedicion) * 100 : 0;
+    const cumplimiento =
+      ordenesConMedicion > 0 ? (ordenesATiempo / ordenesConMedicion) * 100 : 0;
 
     return {
       sede: row.sede,
@@ -233,16 +242,24 @@ async function getKpis({ desde, hasta, sede }) {
       acc.ordenesATiempo += row.ordenesATiempo;
       return acc;
     },
-    { ingresos: 0, costos: 0, rentabilidadMonto: 0, ordenesConMedicion: 0, ordenesATiempo: 0 }
+    {
+      ingresos: 0,
+      costos: 0,
+      rentabilidadMonto: 0,
+      ordenesConMedicion: 0,
+      ordenesATiempo: 0,
+    },
   );
 
-  const rentabilidadPorcentaje = resumen.ingresos > 0
-    ? (resumen.rentabilidadMonto / resumen.ingresos) * 100
-    : 0;
+  const rentabilidadPorcentaje =
+    resumen.ingresos > 0
+      ? (resumen.rentabilidadMonto / resumen.ingresos) * 100
+      : 0;
 
-  const cumplimientoPorcentaje = resumen.ordenesConMedicion > 0
-    ? (resumen.ordenesATiempo / resumen.ordenesConMedicion) * 100
-    : 0;
+  const cumplimientoPorcentaje =
+    resumen.ordenesConMedicion > 0
+      ? (resumen.ordenesATiempo / resumen.ordenesConMedicion) * 100
+      : 0;
 
   return {
     desde: startDate.toISOString().slice(0, 10),
@@ -263,7 +280,9 @@ async function getKpis({ desde, hasta, sede }) {
 
 // 3) Alertas: baja carga de clientes y rutas con exceso de consumo.
 async function getAlertas({ desde, hasta }) {
-  const startDate = parseDateInput(desde || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
+  const startDate = parseDateInput(
+    desde || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+  );
   const endDate = parseDateInput(hasta || new Date());
 
   const pool = await getConnection();
@@ -333,10 +352,7 @@ async function getAlertas({ desde, hasta }) {
 
   // Ambas alertas se calculan en paralelo para mejorar tiempo de respuesta.
   const [bajaCargaResult, excesoConsumoResult] = await Promise.all([
-    pool
-      .request()
-      .input("hasta", sql.Date, endDate)
-      .query(bajaCargaQuery),
+    pool.request().input("hasta", sql.Date, endDate).query(bajaCargaQuery),
     pool
       .request()
       .input("desde", sql.Date, startDate)
@@ -347,7 +363,8 @@ async function getAlertas({ desde, hasta }) {
   const alertasClientes = bajaCargaResult.recordset.map((row) => {
     const cargaPrevia = Number(row.carga_previa || 0);
     const cargaActual = Number(row.carga_actual || 0);
-    const caida = cargaPrevia > 0 ? ((cargaPrevia - cargaActual) / cargaPrevia) * 100 : 0;
+    const caida =
+      cargaPrevia > 0 ? ((cargaPrevia - cargaActual) / cargaPrevia) * 100 : 0;
 
     return {
       tipo: "BAJA_CARGA_CLIENTE",
@@ -367,7 +384,8 @@ async function getAlertas({ desde, hasta }) {
     ruta: row.ruta,
     costoPorTon: Number(row.costo_por_ton || 0),
     promedioGlobal: Number(row.promedio_costo_por_ton || 0),
-    mensaje: "Ruta con costo operativo por tonelada superior al promedio global.",
+    mensaje:
+      "Ruta con costo operativo por tonelada superior al promedio global.",
   }));
 
   return {
@@ -381,8 +399,14 @@ async function getAlertas({ desde, hasta }) {
   };
 }
 
-// 3) Eventos de órdenes: bitácora de anomalías detectadas en la operación.
-async function getEventosOrdenes({ desde, hasta, sede, tipo_evento, limite = 100 }) {
+// 3) Eventos de órdenes: bitácora de anomalías con soporte para evidencias en Base64
+async function getEventosOrdenes({
+  desde,
+  hasta,
+  sede,
+  tipo_evento,
+  limite = 100,
+}) {
   try {
     const startDate = parseDateInput(desde);
     const endDate = parseDateInput(hasta || desde || new Date());
@@ -390,6 +414,7 @@ async function getEventosOrdenes({ desde, hasta, sede, tipo_evento, limite = 100
 
     const pool = await getConnection();
 
+    // Query optimizada: Traemos los datos del evento y concatenamos las rutas de evidencias
     let eventosQuery = `
       SELECT TOP ${limiteNumero}
         oe.id AS evento_id,
@@ -403,7 +428,13 @@ async function getEventosOrdenes({ desde, hasta, sede, tipo_evento, limite = 100
         o.origen,
         o.destino,
         ISNULL(u.nombre, 'No asignado') AS piloto_nombre,
-        ISNULL(cli.nombre, 'N/A') AS cliente_nombre
+        ISNULL(cli.nombre, 'N/A') AS cliente_nombre,
+        (
+            SELECT url_archivo + '|' 
+            FROM orden_evidencias 
+            WHERE orden_id = o.id 
+            FOR XML PATH('')
+        ) AS rutas_evidencias
       FROM orden_eventos oe
       INNER JOIN ordenes o ON o.id = oe.orden_id
       LEFT JOIN usuarios u ON u.id = oe.piloto_id
@@ -411,71 +442,115 @@ async function getEventosOrdenes({ desde, hasta, sede, tipo_evento, limite = 100
       WHERE CAST(oe.fecha_hora AS DATE) BETWEEN @desde AND @hasta
     `;
 
-    const request = pool.request()
+    const request = pool
+      .request()
       .input("desde", sql.Date, startDate)
       .input("hasta", sql.Date, endDate);
 
-    // Filtro de tipo evento
-    if (tipo_evento && typeof tipo_evento === 'string' && ['NORMAL', 'INCIDENTE', 'RETRASO', 'CRITICO'].includes(tipo_evento.toUpperCase())) {
+    if (
+      tipo_evento &&
+      typeof tipo_evento === "string" &&
+      ["NORMAL", "INCIDENTE", "RETRASO", "CRITICO"].includes(
+        tipo_evento.toUpperCase(),
+      )
+    ) {
       eventosQuery += ` AND oe.tipo_evento = @tipo_evento`;
       request.input("tipo_evento", sql.NVarChar(15), tipo_evento.toUpperCase());
     }
 
-    // Filtro de sede (opcional)
-    if (sede && typeof sede === 'string' && sede.trim()) {
+    if (sede && typeof sede === "string" && sede.trim()) {
       try {
         const selectedSede = normalizeSede(sede);
         const sedeCase = buildSedeCaseForOrders("o");
         eventosQuery += ` AND (${sedeCase}) = @sede`;
         request.input("sede", sql.NVarChar(50), selectedSede);
-      } catch (sedeError) {
-        // Si falla la normalización de sede, ignorar el filtro de sede
-        console.warn("[getEventosOrdenes] Sede inválida, ignorando:", sede);
+      } catch (e) {
+        console.warn("Sede inválida ignorada");
       }
     }
 
     eventosQuery += ` ORDER BY oe.fecha_hora DESC`;
-
-    console.log("[getEventosOrdenes] Query:", eventosQuery);
     const result = await request.query(eventosQuery);
 
-    const eventos = result.recordset.map((row) => ({
-      eventoId: row.evento_id,
-      ordenId: row.orden_id,
-      numeroOrden: row.numero_orden,
-      pilotoId: row.piloto_id,
-      pilotoNombre: row.piloto_nombre || "No asignado",
-      clienteNombre: row.cliente_nombre || "N/A",
-      tipoEvento: row.tipo_evento,
-      descripcion: row.descripcion,
-      generaRetraso: row.genera_retraso === 1,
-      fechaHora: new Date(row.fecha_hora).toISOString(),
-      origen: row.origen,
-      destino: row.destino,
-      ruta: `${row.origen} → ${row.destino}`,
-    }));
+    const eventos = result.recordset.map((row) => {
+      // --- PROCESAMIENTO DE IMÁGENES A BASE64 ---
+      let imagenesBase64 = [];
+      if (row.rutas_evidencias) {
+        // Separamos las rutas usando el pipe '|' y limpiamos vacíos
+        const rutas = row.rutas_evidencias
+          .split("|")
+          .filter((r) => r.trim().length > 0);
 
+        imagenesBase64 = rutas
+          .map((rutaRelativa) => {
+            try {
+              // Construimos la ruta física (Retrocediendo según tu config de Multer)
+              const rutaAbsoluta = path.join(
+                __dirname,
+                "../../../",
+                rutaRelativa,
+              );
+
+              // AGREGA ESTO PARA DEPURAR:
+              console.log("DEBUG: Buscando imagen en:", rutaAbsoluta);
+              console.log("DEBUG: ¿Existe?:", fs.existsSync(rutaAbsoluta));
+
+              if (fs.existsSync(rutaAbsoluta)) {
+                const bitmap = fs.readFileSync(rutaAbsoluta);
+                const ext = path
+                  .extname(rutaAbsoluta)
+                  .toLowerCase()
+                  .replace(".", "");
+                // Solo procesamos si es imagen
+                if (["jpg", "jpeg", "png", "webp"].includes(ext)) {
+                  return `data:image/${ext};base64,${bitmap.toString("base64")}`;
+                }
+              }
+            } catch (err) {
+              console.error(
+                `Error procesando imagen ${rutaRelativa}:`,
+                err.message,
+              );
+            }
+            return null;
+          })
+          .filter((img) => img !== null);
+      }
+
+      return {
+        eventoId: row.evento_id,
+        ordenId: row.orden_id,
+        numeroOrden: row.numero_orden,
+        pilotoNombre: row.piloto_nombre,
+        clienteNombre: row.cliente_nombre,
+        tipoEvento: row.tipo_evento,
+        descripcion: row.descripcion,
+        generaRetraso: row.genera_retraso === 1,
+        fechaHora: row.fecha_hora,
+        ruta: `${row.origen} → ${row.destino}`,
+        imagenes: imagenesBase64,
+      };
+    });
+
+    // Conteos para el dashboard
     const conteoTipos = {
-      NORMAL: eventos.filter(e => e.tipoEvento === 'NORMAL').length,
-      INCIDENTE: eventos.filter(e => e.tipoEvento === 'INCIDENTE').length,
-      RETRASO: eventos.filter(e => e.tipoEvento === 'RETRASO').length,
-      CRITICO: eventos.filter(e => e.tipoEvento === 'CRITICO').length,
+      NORMAL: eventos.filter((e) => e.tipoEvento === "NORMAL").length,
+      INCIDENTE: eventos.filter((e) => e.tipoEvento === "INCIDENTE").length,
+      RETRASO: eventos.filter((e) => e.tipoEvento === "RETRASO").length,
+      CRITICO: eventos.filter((e) => e.tipoEvento === "CRITICO").length,
     };
 
     return {
       desde: startDate.toISOString().slice(0, 10),
       hasta: endDate.toISOString().slice(0, 10),
-      sede: sede || "TODAS",
-      tipoEvento: tipo_evento || "TODOS",
       total: eventos.length,
       conteoTipos,
-      modoActualizacion: "TIEMPO_REAL",
       actualizadoEn: new Date().toISOString(),
       eventos,
     };
   } catch (error) {
-    console.error("[getEventosOrdenes] Error:", error);
-    throw new Error(`Error al obtener eventos: ${error.message}`);
+    console.error("[getEventosOrdenes] Error crítico:", error);
+    throw new Error(`Error al obtener bitácora: ${error.message}`);
   }
 }
 
