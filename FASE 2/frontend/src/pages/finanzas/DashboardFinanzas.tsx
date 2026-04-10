@@ -5,7 +5,8 @@ import FinanzasHeader from "../../components/finanzas/FinanzasHeader";
 import FinanzasMenu from "../../components/finanzas/FinanzasMenu";
 import FacturaBadge from "../../components/finanzas/FacturaBadge";
 import { getFacturas, getCobros } from "../../services/facturacion/facturacion";
-import type { Factura, CuentaPorCobrar } from "../../services/facturacion/facturacion";
+type Factura = any;
+type CuentaPorCobrar = any;
 import "../finanzas/finanzas.css";
 
 //services/facturacion/facturacion

@@ -26,7 +26,8 @@ export const useClientContracts = (): UseClientContractsReturn => {
     pendingInvoices: 0,
     availableCredit: 0,
     totalCreditLimit: 0,
-    usedCredit: 0
+    usedCredit: 0,
+    completedOrders: 0
   });
   const [actividadesRecientes, setActividadesRecientes] = useState<ActividadReciente[]>([]);
 

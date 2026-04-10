@@ -1,15 +1,15 @@
 // src/components/finanzas/FacturaModal.tsx
 import React from "react";
 import FacturaBadge from "./FacturaBadge";
-import type { Factura } from "../../services/facturacion/facturacion";
-
-//FASE 2/frontend/src/services/facturacion/facturacion.js
+type Factura = any;
 
 interface Props {
   factura: Factura;
   onClose: () => void;
+  cxc?: any;
   onValidar?: (f: Factura) => void;
   onCertificar?: (f: Factura) => void;
+  onConfirm?: (payload: any) => Promise<void>; 
   onPagar?: (f: Factura) => void;
   cargando?: boolean;
 }

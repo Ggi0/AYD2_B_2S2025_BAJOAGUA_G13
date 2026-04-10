@@ -3,12 +3,11 @@ import { useState, useCallback } from "react";
 import {
   ClientService,
   type OrdenCliente,
-  type DashboardStats,
   type ActividadReciente,
 } from "../client";
 import { apiService } from "../../api";
 import type { RutaAutorizada } from "../../api";
-
+type DashboardStats = any;
 interface UseClientOrdersReturn {
   loading: boolean;
   error: string | null;

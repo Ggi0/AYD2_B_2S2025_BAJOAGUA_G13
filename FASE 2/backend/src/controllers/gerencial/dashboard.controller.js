@@ -66,8 +66,33 @@ async function getAlertas(req, res) {
   }
 }
 
+// Controlador HTTP para obtener eventos/bitácora de órdenes.
+async function getEventosOrdenes(req, res) {
+  try {
+    const data = await dashboardService.getEventosOrdenes({
+      desde: req.query.desde,
+      hasta: req.query.hasta,
+      sede: req.query.sede,
+      tipo_evento: req.query.tipo_evento,
+      limite: req.query.limite || 100,
+    });
+
+    return res.status(200).json({
+      ok: true,
+      mensaje: "Eventos de órdenes obtenidos correctamente",
+      data,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      ok: false,
+      mensaje: error.message || "No se pudieron obtener los eventos de órdenes",
+    });
+  }
+}
+
 module.exports = {
   getCorteDiario,
   getKpis,
   getAlertas,
+  getEventosOrdenes,
 };

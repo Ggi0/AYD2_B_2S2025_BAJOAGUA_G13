@@ -41,7 +41,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles 
       } else if (userRole === 'patio') {
         return <Navigate to="/patio/dashboard" replace />;
       } else if (userRole === 'finanzas') {
-        return <Navigate to="/finanzas/dashboard" replace />;
+        return <Navigate to="/finanzas/facturacion" replace />;
       } else if (userRole === 'admin') {
         return <Navigate to="/admin/dashboard" replace />;
       }

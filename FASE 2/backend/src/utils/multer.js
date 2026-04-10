@@ -9,7 +9,7 @@ const storage = multer.diskStorage({
     // Si necesitas carpetas dinámicas, envíalas por Query String (?folder=fotos)
     // porque el body no existe hasta que multer termina.
     const folder = req.query.folder || "evidencias";
-    const dir = path.join(__dirname, "../../../", folder);
+    const dir = path.join(__dirname, "../../", folder);
 
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     cb(null, dir);

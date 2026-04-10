@@ -16,5 +16,7 @@ router.get("/corte-diario", dashboardController.getCorteDiario);
 router.get("/kpis", dashboardController.getKpis);
 // Alertas de desviaciones (clientes con baja carga y rutas con exceso de costo).
 router.get("/alertas", dashboardController.getAlertas);
+// Eventos/bitácora de órdenes con detalle de anomalías.
+router.get("/eventos", dashboardController.getEventosOrdenes);
 
 module.exports = router;

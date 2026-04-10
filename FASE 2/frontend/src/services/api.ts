@@ -1,8 +1,6 @@
 // src/services/api.ts
-const viteEnv = (
-  import.meta as ImportMeta & { env?: { VITE_API_URL?: string } }
-).env;
-const API_BASE_URL = viteEnv?.VITE_API_URL || "http://localhost:3001/api";
+
+const API_BASE_URL = "/api";
 
 export { API_BASE_URL };
 
@@ -16,7 +14,7 @@ export type ApiResponse<T = any> = {
 export type LoginPayload = {
   email: string;
   password: string;
-};
+}; 
 
 export type RegisterPayload = {
   nit: string;

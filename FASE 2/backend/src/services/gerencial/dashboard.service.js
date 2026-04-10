@@ -1,4 +1,6 @@
 "use strict";
+const fs = require("fs");
+const path = require("path");
 
 const { sql, getConnection } = require("../../config/db");
 
@@ -15,7 +17,11 @@ function parseDateInput(dateText) {
 // Normaliza y valida la sede para filtros del dashboard.
 function normalizeSede(sede) {
   if (!sede) return null;
-  const value = String(sede).trim().toUpperCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  const value = String(sede)
+    .trim()
+    .toUpperCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
 
   const aliases = {
     GUATEMALA: "GUATEMALA",
@@ -26,7 +32,9 @@ function normalizeSede(sede) {
 
   const normalized = aliases[value];
   if (!normalized) {
-    throw new Error("Sede invalida. Valores permitidos: GUATEMALA, XELA, PUERTO BARRIOS");
+    throw new Error(
+      "Sede invalida. Valores permitidos: GUATEMALA, XELA, PUERTO BARRIOS",
+    );
   }
 
   return normalized;
@@ -133,7 +141,7 @@ async function getCorteDiario({ fecha, sede }) {
       acc.totalFacturado += item.totalFacturado;
       return acc;
     },
-    { totalOrdenes: 0, totalFacturas: 0, totalFacturado: 0 }
+    { totalOrdenes: 0, totalFacturas: 0, totalFacturado: 0 },
   );
 
   return {
@@ -156,20 +164,24 @@ async function getKpis({ desde, hasta, sede }) {
 
   const sedeCase = buildSedeCaseForOrders("o");
 
-  // Se usa historial_cliente + orden_kpi para métricas financieras y operativas.
+  // Se usan ordenes + facturas_fel + orden_kpi para métricas financieras y operativas.
   const kpiQuery = `
     WITH base AS (
       SELECT
         ${sedeCase} AS sede,
-        ISNULL(h.monto_facturado, 0) AS ingreso,
-        ISNULL(h.gasto_operativo, 0) AS costo,
+        ISNULL(f.ingreso_total, 0) AS ingreso,
+        ISNULL(o.costo, 0) AS costo,
         ISNULL(o.tiempo_estimado, ISNULL(k.tiempo_planificado, 0)) AS tiempo_pactado,
         ISNULL(k.tiempo_real, 0) AS tiempo_real,
         ISNULL(k.retraso, 0) AS retraso
-      FROM historial_cliente h
-      INNER JOIN ordenes o ON o.id = h.orden_id
+      FROM ordenes o
+      LEFT JOIN (
+        SELECT orden_id, SUM(ISNULL(total_factura, 0)) AS ingreso_total
+        FROM facturas_fel
+        GROUP BY orden_id
+      ) f ON f.orden_id = o.id
       LEFT JOIN orden_kpi k ON k.orden_id = o.id
-      WHERE CAST(h.fecha_registro AS DATE) BETWEEN @desde AND @hasta
+      WHERE CAST(COALESCE(o.fecha_entrega, o.fecha_creacion) AS DATE) BETWEEN @desde AND @hasta
     )
     SELECT
       sede,
@@ -202,7 +214,8 @@ async function getKpis({ desde, hasta, sede }) {
   const porSede = rows.map((row) => {
     const ordenesConMedicion = Number(row.ordenes_con_medicion || 0);
     const ordenesATiempo = Number(row.ordenes_a_tiempo || 0);
-    const cumplimiento = ordenesConMedicion > 0 ? (ordenesATiempo / ordenesConMedicion) * 100 : 0;
+    const cumplimiento =
+      ordenesConMedicion > 0 ? (ordenesATiempo / ordenesConMedicion) * 100 : 0;
 
     return {
       sede: row.sede,
@@ -229,16 +242,24 @@ async function getKpis({ desde, hasta, sede }) {
       acc.ordenesATiempo += row.ordenesATiempo;
       return acc;
     },
-    { ingresos: 0, costos: 0, rentabilidadMonto: 0, ordenesConMedicion: 0, ordenesATiempo: 0 }
+    {
+      ingresos: 0,
+      costos: 0,
+      rentabilidadMonto: 0,
+      ordenesConMedicion: 0,
+      ordenesATiempo: 0,
+    },
   );
 
-  const rentabilidadPorcentaje = resumen.ingresos > 0
-    ? (resumen.rentabilidadMonto / resumen.ingresos) * 100
-    : 0;
+  const rentabilidadPorcentaje =
+    resumen.ingresos > 0
+      ? (resumen.rentabilidadMonto / resumen.ingresos) * 100
+      : 0;
 
-  const cumplimientoPorcentaje = resumen.ordenesConMedicion > 0
-    ? (resumen.ordenesATiempo / resumen.ordenesConMedicion) * 100
-    : 0;
+  const cumplimientoPorcentaje =
+    resumen.ordenesConMedicion > 0
+      ? (resumen.ordenesATiempo / resumen.ordenesConMedicion) * 100
+      : 0;
 
   return {
     desde: startDate.toISOString().slice(0, 10),
@@ -259,7 +280,9 @@ async function getKpis({ desde, hasta, sede }) {
 
 // 3) Alertas: baja carga de clientes y rutas con exceso de consumo.
 async function getAlertas({ desde, hasta }) {
-  const startDate = parseDateInput(desde || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000));
+  const startDate = parseDateInput(
+    desde || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+  );
   const endDate = parseDateInput(hasta || new Date());
 
   const pool = await getConnection();
@@ -267,16 +290,20 @@ async function getAlertas({ desde, hasta }) {
   // Detecta clientes con caída > 30% de carga en semana actual vs semana previa.
   const bajaCargaQuery = `
     WITH carga_actual AS (
-      SELECT h.cliente_id, SUM(ISNULL(h.volumen_carga_ton, 0)) AS carga_actual
-      FROM historial_cliente h
-      WHERE CAST(h.fecha_registro AS DATE) BETWEEN DATEADD(DAY, -7, @hasta) AND @hasta
-      GROUP BY h.cliente_id
+      SELECT
+        o.cliente_id,
+        SUM(COALESCE(NULLIF(o.peso_real, 0), o.peso_estimado, 0)) AS carga_actual
+      FROM ordenes o
+      WHERE CAST(COALESCE(o.fecha_entrega, o.fecha_creacion) AS DATE) BETWEEN DATEADD(DAY, -7, @hasta) AND @hasta
+      GROUP BY o.cliente_id
     ),
     carga_previa AS (
-      SELECT h.cliente_id, SUM(ISNULL(h.volumen_carga_ton, 0)) AS carga_previa
-      FROM historial_cliente h
-      WHERE CAST(h.fecha_registro AS DATE) BETWEEN DATEADD(DAY, -14, @hasta) AND DATEADD(DAY, -8, @hasta)
-      GROUP BY h.cliente_id
+      SELECT
+        o.cliente_id,
+        SUM(COALESCE(NULLIF(o.peso_real, 0), o.peso_estimado, 0)) AS carga_previa
+      FROM ordenes o
+      WHERE CAST(COALESCE(o.fecha_entrega, o.fecha_creacion) AS DATE) BETWEEN DATEADD(DAY, -14, @hasta) AND DATEADD(DAY, -8, @hasta)
+      GROUP BY o.cliente_id
     )
     SELECT
       u.id AS cliente_id,
@@ -296,11 +323,10 @@ async function getAlertas({ desde, hasta }) {
     WITH rutas AS (
       SELECT
         CONCAT(o.origen, ' -> ', o.destino) AS ruta,
-        SUM(ISNULL(h.gasto_operativo, 0)) AS gasto_total,
-        SUM(NULLIF(h.volumen_carga_ton, 0)) AS volumen_total
-      FROM historial_cliente h
-      INNER JOIN ordenes o ON o.id = h.orden_id
-      WHERE CAST(h.fecha_registro AS DATE) BETWEEN @desde AND @hasta
+        SUM(ISNULL(o.costo, 0)) AS gasto_total,
+        SUM(COALESCE(NULLIF(o.peso_real, 0), o.peso_estimado, 0)) AS volumen_total
+      FROM ordenes o
+      WHERE CAST(COALESCE(o.fecha_entrega, o.fecha_creacion) AS DATE) BETWEEN @desde AND @hasta
       GROUP BY CONCAT(o.origen, ' -> ', o.destino)
     ),
     metricas AS (
@@ -326,10 +352,7 @@ async function getAlertas({ desde, hasta }) {
 
   // Ambas alertas se calculan en paralelo para mejorar tiempo de respuesta.
   const [bajaCargaResult, excesoConsumoResult] = await Promise.all([
-    pool
-      .request()
-      .input("hasta", sql.Date, endDate)
-      .query(bajaCargaQuery),
+    pool.request().input("hasta", sql.Date, endDate).query(bajaCargaQuery),
     pool
       .request()
       .input("desde", sql.Date, startDate)
@@ -340,7 +363,8 @@ async function getAlertas({ desde, hasta }) {
   const alertasClientes = bajaCargaResult.recordset.map((row) => {
     const cargaPrevia = Number(row.carga_previa || 0);
     const cargaActual = Number(row.carga_actual || 0);
-    const caida = cargaPrevia > 0 ? ((cargaPrevia - cargaActual) / cargaPrevia) * 100 : 0;
+    const caida =
+      cargaPrevia > 0 ? ((cargaPrevia - cargaActual) / cargaPrevia) * 100 : 0;
 
     return {
       tipo: "BAJA_CARGA_CLIENTE",
@@ -360,7 +384,8 @@ async function getAlertas({ desde, hasta }) {
     ruta: row.ruta,
     costoPorTon: Number(row.costo_por_ton || 0),
     promedioGlobal: Number(row.promedio_costo_por_ton || 0),
-    mensaje: "Ruta con costo operativo por tonelada superior al promedio global.",
+    mensaje:
+      "Ruta con costo operativo por tonelada superior al promedio global.",
   }));
 
   return {
@@ -374,10 +399,166 @@ async function getAlertas({ desde, hasta }) {
   };
 }
 
+// 3) Eventos de órdenes: bitácora de anomalías con soporte para evidencias en Base64
+async function getEventosOrdenes({
+  desde,
+  hasta,
+  sede,
+  tipo_evento,
+  limite = 100,
+}) {
+  try {
+    const startDate = parseDateInput(desde);
+    const endDate = parseDateInput(hasta || desde || new Date());
+    const limiteNumero = Math.min(Number(limite) || 100, 1000);
+
+    const pool = await getConnection();
+
+    // Query optimizada: Traemos los datos del evento y concatenamos las rutas de evidencias
+    let eventosQuery = `
+      SELECT TOP ${limiteNumero}
+        oe.id AS evento_id,
+        oe.orden_id,
+        oe.piloto_id,
+        oe.tipo_evento,
+        oe.descripcion,
+        oe.genera_retraso,
+        oe.fecha_hora,
+        o.numero_orden,
+        o.origen,
+        o.destino,
+        ISNULL(u.nombre, 'No asignado') AS piloto_nombre,
+        ISNULL(cli.nombre, 'N/A') AS cliente_nombre,
+        (
+            SELECT url_archivo + '|' 
+            FROM orden_evidencias 
+            WHERE orden_id = o.id 
+            FOR XML PATH('')
+        ) AS rutas_evidencias
+      FROM orden_eventos oe
+      INNER JOIN ordenes o ON o.id = oe.orden_id
+      LEFT JOIN usuarios u ON u.id = oe.piloto_id
+      LEFT JOIN usuarios cli ON cli.id = o.cliente_id
+      WHERE CAST(oe.fecha_hora AS DATE) BETWEEN @desde AND @hasta
+    `;
+
+    const request = pool
+      .request()
+      .input("desde", sql.Date, startDate)
+      .input("hasta", sql.Date, endDate);
+
+    if (
+      tipo_evento &&
+      typeof tipo_evento === "string" &&
+      ["NORMAL", "INCIDENTE", "RETRASO", "CRITICO"].includes(
+        tipo_evento.toUpperCase(),
+      )
+    ) {
+      eventosQuery += ` AND oe.tipo_evento = @tipo_evento`;
+      request.input("tipo_evento", sql.NVarChar(15), tipo_evento.toUpperCase());
+    }
+
+    if (sede && typeof sede === "string" && sede.trim()) {
+      try {
+        const selectedSede = normalizeSede(sede);
+        const sedeCase = buildSedeCaseForOrders("o");
+        eventosQuery += ` AND (${sedeCase}) = @sede`;
+        request.input("sede", sql.NVarChar(50), selectedSede);
+      } catch (e) {
+        console.warn("Sede inválida ignorada");
+      }
+    }
+
+    eventosQuery += ` ORDER BY oe.fecha_hora DESC`;
+    const result = await request.query(eventosQuery);
+
+    const eventos = result.recordset.map((row) => {
+      // --- PROCESAMIENTO DE IMÁGENES A BASE64 ---
+      let imagenesBase64 = [];
+      if (row.rutas_evidencias) {
+        // Separamos las rutas usando el pipe '|' y limpiamos vacíos
+        const rutas = row.rutas_evidencias
+          .split("|")
+          .filter((r) => r.trim().length > 0);
+
+        imagenesBase64 = rutas
+          .map((rutaRelativa) => {
+            try {
+              // Construimos la ruta física (Retrocediendo según tu config de Multer)
+              const rutaAbsoluta = path.join(
+                __dirname,
+                "../../../",
+                rutaRelativa,
+              );
+
+              // AGREGA ESTO PARA DEPURAR:
+              console.log("DEBUG: Buscando imagen en:", rutaAbsoluta);
+              console.log("DEBUG: ¿Existe?:", fs.existsSync(rutaAbsoluta));
+
+              if (fs.existsSync(rutaAbsoluta)) {
+                const bitmap = fs.readFileSync(rutaAbsoluta);
+                const ext = path
+                  .extname(rutaAbsoluta)
+                  .toLowerCase()
+                  .replace(".", "");
+                // Solo procesamos si es imagen
+                if (["jpg", "jpeg", "png", "webp"].includes(ext)) {
+                  return `data:image/${ext};base64,${bitmap.toString("base64")}`;
+                }
+              }
+            } catch (err) {
+              console.error(
+                `Error procesando imagen ${rutaRelativa}:`,
+                err.message,
+              );
+            }
+            return null;
+          })
+          .filter((img) => img !== null);
+      }
+
+      return {
+        eventoId: row.evento_id,
+        ordenId: row.orden_id,
+        numeroOrden: row.numero_orden,
+        pilotoNombre: row.piloto_nombre,
+        clienteNombre: row.cliente_nombre,
+        tipoEvento: row.tipo_evento,
+        descripcion: row.descripcion,
+        generaRetraso: row.genera_retraso === 1,
+        fechaHora: row.fecha_hora,
+        ruta: `${row.origen} → ${row.destino}`,
+        imagenes: imagenesBase64,
+      };
+    });
+
+    // Conteos para el dashboard
+    const conteoTipos = {
+      NORMAL: eventos.filter((e) => e.tipoEvento === "NORMAL").length,
+      INCIDENTE: eventos.filter((e) => e.tipoEvento === "INCIDENTE").length,
+      RETRASO: eventos.filter((e) => e.tipoEvento === "RETRASO").length,
+      CRITICO: eventos.filter((e) => e.tipoEvento === "CRITICO").length,
+    };
+
+    return {
+      desde: startDate.toISOString().slice(0, 10),
+      hasta: endDate.toISOString().slice(0, 10),
+      total: eventos.length,
+      conteoTipos,
+      actualizadoEn: new Date().toISOString(),
+      eventos,
+    };
+  } catch (error) {
+    console.error("[getEventosOrdenes] Error crítico:", error);
+    throw new Error(`Error al obtener bitácora: ${error.message}`);
+  }
+}
+
 module.exports = {
   getCorteDiario,
   getKpis,
   getAlertas,
+  getEventosOrdenes,
   __testables: {
     parseDateInput,
     normalizeSede,
