@@ -40,7 +40,8 @@ const FinanzasMenu: React.FC = () => {
       icon: <FaMoneyCheckAlt className="h-5 w-5" />,
       path: '/finanzas/pagos'
     },
-    { id: 'cobros', label: 'Cobros', icon: <FaMoneyCheckAlt />, path: '/finanzas/cobros' }
+    { id: 'cobros', label: 'Cobros', icon: <FaMoneyCheckAlt />, path: '/finanzas/cobros' },
+    { id: 'tarifas', label: 'Tarifas', icon: <FaMoneyCheckAlt />, path: '/finanzas/tarifaz' }
   ];
 
   const handleNavigation = (path: string) => {
