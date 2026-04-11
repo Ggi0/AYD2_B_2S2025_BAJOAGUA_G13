@@ -15,6 +15,7 @@ import ClientesList from './pages/logistico/ClientesList';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 import FacturacionPage from './pages/finanzas/FacturacionPage';
 import PagosPage from './pages/finanzas/PagosPage';
+import TarifasPage from './pages/finanzas/TarifasPage'; 
 import DashboardGerencial from './pages/gerencia/DashboardGerencial';
 import BitacoraOrdenes from './pages/gerencia/BitacoraOrdenes';
 import DashboardFinanzas from './pages/finanzas/DashboardFinanzas';
@@ -255,6 +256,12 @@ function App() {
         <Route path="/finanzas/cobros" element={
           <ProtectedRoute allowedRoles={['finanzas', 'gerencia', 'admin']}>
             <CobrosPage />
+          </ProtectedRoute>
+        } />
+
+<Route path="/finanzas/tarifaz" element={
+          <ProtectedRoute allowedRoles={['finanzas', 'gerencia', 'admin']}>
+            <TarifasPage />
           </ProtectedRoute>
         } />
 
