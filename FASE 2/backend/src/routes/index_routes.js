@@ -31,6 +31,7 @@ router.get('/', (req, res) => {
 const facturacionRoutes = require("./facturacion/routes_factuacion");
 const authRoutes = require("./auth/auth.routes");
 const ordenRoutes = require("./orden/orden.routes");
+const finanzasTarifarioRoutas = require("./facturacion/routes_finanzas_tarifario")
 
 // otras carpetas por ejemplo:
 // const contratosRoutes = require('./contratos/routes_contratos');
@@ -54,6 +55,8 @@ router.use('/tarifario',   tarifarioRoutes);
 router.use('/notificaciones', notificacionesRoutes);
 router.use('/gerencial',   gerencialRoutes);
 router.use("/orden", ordenRoutes);
+
+router.use('/finanzas/tarifario', tarifarioRoutes);
 //  /api/contratos
 //  router.use('/contratos', contratosRoutes);
 
